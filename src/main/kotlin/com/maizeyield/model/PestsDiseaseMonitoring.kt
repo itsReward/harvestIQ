@@ -1,0 +1,72 @@
+package com.maizeyield.model
+
+import jakarta.persistence.*
+import org.hibernate.annotations.CreationTimestamp
+import org.hibernate.annotations.UpdateTimestamp
+import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.LocalDateTime
+
+@Entity
+@Table(name = "pests_diseases_monitoring")
+data class PestsDiseaseMonitoring(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long? = null,
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "planting_session_id", nullable = false)
+    val plantingSession: PlantingSession,
+
+    @Column(name = "observation_date", nullable = false)
+    val observationDate: LocalDate,
+
+    @Column(name = "pest_or_disease_name", nullable = false, length = 100)
+    val pestOrDiseaseName: String,
+
+    @Column(name = "severity_level", nullable = false, length = 20)
+    val severityLevel: String,
+
+    @Column(name = "affected_area_percentage", precision = 5, scale = 2)
+    val affectedAreaPercentage: BigDecimal? = null,
+
+    @Column(name = "treatment_applied")
+    val treatmentApplied: String? = null,
+
+    @Column(columnDefinition = "TEXT")
+    val notes: String? = null,
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    var updatedAt: LocalDateTime = LocalDateTime.now()
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as PestsDiseaseMonitoring
+
+        if (id != other.id) return false
+        if (plantingSession.id != other.plantingSession.id) return false
+        if (observationDate != other.observationDate) return false
+        if (pestOrDiseaseName != other.pestOrDiseaseName) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = id?.hashCode() ?: 0
+        result = 31 * result + (plantingSession.id?.hashCode() ?: 0)
+        result = 31 * result + observationDate.hashCode()
+        result = 31 * result + pestOrDiseaseName.hashCode()
+        return result
+    }
+
+    override fun toString(): String {
+        return "PestsDiseaseMonitoring(id=$id, plantingSessionId=${plantingSession.id}, observationDate=$observationDate, pestOrDiseaseName='$pestOrDiseaseName', severityLevel='$severityLevel')"
+    }
+}
