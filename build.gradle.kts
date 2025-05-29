@@ -25,6 +25,9 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.springframework.boot:spring-boot-starter-reactor-netty")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.retry:spring-retry:2.0.0")
+    implementation("org.springframework:spring-aspects")
+    implementation("org.springframework.boot:spring-boot-starter-cache")
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")

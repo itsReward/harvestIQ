@@ -1,5 +1,7 @@
 package com.maizeyield.service.impl
 
+import com.maizeyield.config.ResilientWeatherService
+import com.maizeyield.config.WeatherDataValidator
 import com.maizeyield.dto.WeatherDataCreateRequest
 import com.maizeyield.dto.WeatherDataResponse
 import com.maizeyield.dto.WeatherDataUpdateRequest
@@ -7,14 +9,16 @@ import com.maizeyield.dto.WeatherForecastResponse
 import com.maizeyield.exception.ExternalServiceException
 import com.maizeyield.exception.ResourceNotFoundException
 import com.maizeyield.exception.UnauthorizedAccessException
+import com.maizeyield.model.Farm
 import com.maizeyield.model.WeatherData
 import com.maizeyield.repository.FarmRepository
 import com.maizeyield.repository.WeatherDataRepository
 import com.maizeyield.service.FarmService
 import com.maizeyield.service.WeatherService
 import com.maizeyield.service.external.WeatherAlert
-import com.maizeyield.service.external.WeatherApiService
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -28,7 +32,10 @@ class WeatherServiceImpl(
     private val weatherDataRepository: WeatherDataRepository,
     private val farmRepository: FarmRepository,
     private val farmService: FarmService,
-    private val weatherApiService: WeatherApiService // Inject the new external service
+    private val resilientWeatherService: ResilientWeatherService,
+    private val weatherDataValidator: WeatherDataValidator,
+    @Value("\${weather.data.validation.enabled:true}") private val validationEnabled: Boolean,
+    @Value("\${weather.data.cache.ttl-minutes:30}") private val cacheTtlMinutes: Int
 ) : WeatherService {
 
     override fun getWeatherDataByFarmId(userId: Long, farmId: Long): List<WeatherDataResponse> {
@@ -145,6 +152,7 @@ class WeatherServiceImpl(
         return true
     }
 
+    @Cacheable(value = ["weather-data"], key = "#farmId + '_latest'", unless = "#result == null")
     override fun getLatestWeatherData(userId: Long, farmId: Long): WeatherDataResponse? {
         if (!farmService.isFarmOwner(userId, farmId)) {
             throw UnauthorizedAccessException("You don't have permission to access this farm")
@@ -175,33 +183,46 @@ class WeatherServiceImpl(
         try {
             logger.info { "Fetching current weather data for farm: ${farm.name}" }
 
-            // Use the new external weather service
-            val currentWeatherResponse = weatherApiService.fetchCurrentWeather(farm)
+            // Use the resilient weather service with fallback support
+            val currentWeatherResponse = resilientWeatherService.fetchCurrentWeatherWithFallback(farm)
 
             return if (currentWeatherResponse != null) {
-                // Save current weather data to database
-                val existingData = weatherDataRepository.findByFarmAndDate(farm, currentWeatherResponse.date)
+                // Validate data if validation is enabled
+                val validatedResponse = if (validationEnabled) {
+                    if (weatherDataValidator.validateWeatherData(currentWeatherResponse)) {
+                        weatherDataValidator.sanitizeWeatherData(currentWeatherResponse)
+                    } else {
+                        logger.warn { "Weather data validation failed for farm: ${farm.name}" }
+                        return emptyList()
+                    }
+                } else {
+                    currentWeatherResponse
+                }
+
+                // Save current weather data to database if it doesn't exist
+                val existingData = weatherDataRepository.findByFarmAndDate(farm, validatedResponse.date)
 
                 if (existingData.isEmpty) {
                     val weatherData = WeatherData(
                         farm = farm,
-                        date = currentWeatherResponse.date,
-                        minTemperature = currentWeatherResponse.minTemperature,
-                        maxTemperature = currentWeatherResponse.maxTemperature,
-                        averageTemperature = currentWeatherResponse.averageTemperature,
-                        rainfallMm = currentWeatherResponse.rainfallMm,
-                        humidityPercentage = currentWeatherResponse.humidityPercentage,
-                        windSpeedKmh = currentWeatherResponse.windSpeedKmh,
-                        solarRadiation = currentWeatherResponse.solarRadiation,
-                        source = currentWeatherResponse.source
+                        date = validatedResponse.date,
+                        minTemperature = validatedResponse.minTemperature,
+                        maxTemperature = validatedResponse.maxTemperature,
+                        averageTemperature = validatedResponse.averageTemperature,
+                        rainfallMm = validatedResponse.rainfallMm,
+                        humidityPercentage = validatedResponse.humidityPercentage,
+                        windSpeedKmh = validatedResponse.windSpeedKmh,
+                        solarRadiation = validatedResponse.solarRadiation,
+                        source = validatedResponse.source
                     )
 
                     val savedWeatherData = weatherDataRepository.save(weatherData)
                     listOf(mapToWeatherDataResponse(savedWeatherData))
                 } else {
-                    listOf(currentWeatherResponse)
+                    listOf(validatedResponse)
                 }
             } else {
+                logger.warn { "Failed to fetch weather data from all providers for farm: ${farm.name}" }
                 emptyList()
             }
 
@@ -211,6 +232,7 @@ class WeatherServiceImpl(
         }
     }
 
+    @Cacheable(value = ["weather-forecast"], key = "#farmId + '_' + #days", unless = "#result.forecasts.isEmpty()")
     override fun getWeatherForecast(userId: Long, farmId: Long, days: Int): WeatherForecastResponse {
         if (!farmService.isFarmOwner(userId, farmId)) {
             throw UnauthorizedAccessException("You don't have permission to access this farm")
@@ -227,10 +249,24 @@ class WeatherServiceImpl(
         try {
             logger.info { "Fetching weather forecast for farm: ${farm.name}" }
 
-            // Use the new external weather service
-            val forecastData = weatherApiService.fetchWeatherForecast(farm, days)
+            // Use the resilient weather service with fallback support
+            val forecastData = resilientWeatherService.fetchWeatherForecastWithFallback(farm, days)
 
-            return WeatherForecastResponse(forecastData)
+            // Validate and sanitize forecast data if validation is enabled
+            val validatedForecastData = if (validationEnabled) {
+                forecastData.mapNotNull { forecast ->
+                    if (weatherDataValidator.validateWeatherData(forecast)) {
+                        weatherDataValidator.sanitizeWeatherData(forecast)
+                    } else {
+                        logger.warn { "Forecast data validation failed for farm: ${farm.name} on ${forecast.date}" }
+                        null
+                    }
+                }
+            } else {
+                forecastData
+            }
+
+            return WeatherForecastResponse(validatedForecastData)
 
         } catch (e: Exception) {
             logger.error(e) { "Error fetching weather forecast for farm: ${farm.name}" }
@@ -284,7 +320,7 @@ class WeatherServiceImpl(
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
         return try {
-            weatherApiService.fetchWeatherAlerts(farm)
+            resilientWeatherService.fetchWeatherAlertsWithFallback(farm)
         } catch (e: Exception) {
             logger.error(e) { "Error fetching weather alerts for farm: ${farm.name}" }
             emptyList()
@@ -302,12 +338,84 @@ class WeatherServiceImpl(
         val farm = farmRepository.findById(farmId)
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
+        // Check if we already have this data in our database
+        val existingData = weatherDataRepository.findByFarmAndDate(farm, date)
+        if (existingData.isPresent) {
+            return mapToWeatherDataResponse(existingData.get())
+        }
+
+        // Fetch from external API if not found locally
         return try {
-            weatherApiService.fetchHistoricalWeather(farm, date)
+            val historicalData = resilientWeatherService.fetchHistoricalWeatherWithFallback(farm, date)
+
+            // Save to database if validation passes
+            historicalData?.let { data ->
+                val validatedData = if (validationEnabled) {
+                    if (weatherDataValidator.validateWeatherData(data)) {
+                        weatherDataValidator.sanitizeWeatherData(data)
+                    } else {
+                        logger.warn { "Historical weather data validation failed for farm: ${farm.name} on $date" }
+                        return null
+                    }
+                } else {
+                    data
+                }
+
+                val weatherEntity = WeatherData(
+                    farm = farm,
+                    date = validatedData.date,
+                    minTemperature = validatedData.minTemperature,
+                    maxTemperature = validatedData.maxTemperature,
+                    averageTemperature = validatedData.averageTemperature,
+                    rainfallMm = validatedData.rainfallMm,
+                    humidityPercentage = validatedData.humidityPercentage,
+                    windSpeedKmh = validatedData.windSpeedKmh,
+                    solarRadiation = validatedData.solarRadiation,
+                    source = validatedData.source
+                )
+
+                val savedEntity = weatherDataRepository.save(weatherEntity)
+                mapToWeatherDataResponse(savedEntity)
+            }
         } catch (e: Exception) {
             logger.error(e) { "Error fetching historical weather data for farm: ${farm.name} on date: $date" }
             null
         }
+    }
+
+    /**
+     * Get weather statistics for a farm
+     */
+    fun getWeatherStatistics(userId: Long, farmId: Long, startDate: LocalDate, endDate: LocalDate): Map<String, Any> {
+        if (!farmService.isFarmOwner(userId, farmId)) {
+            throw UnauthorizedAccessException("You don't have permission to access this farm")
+        }
+
+        val farm = farmRepository.findById(farmId)
+            .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+        return mapOf(
+            "averageTemperature" to (weatherDataRepository.findAverageTemperatureByFarmAndDateRange(farm, startDate, endDate) ?: 0.0),
+            "maxTemperature" to (weatherDataRepository.findMaxTemperatureByFarmAndDateRange(farm, startDate, endDate) ?: 0.0),
+            "minTemperature" to (weatherDataRepository.findMinTemperatureByFarmAndDateRange(farm, startDate, endDate) ?: 0.0),
+            "totalRainfall" to (weatherDataRepository.findTotalRainfallByFarmAndDateRange(farm, startDate, endDate) ?: 0.0),
+            "averageHumidity" to (weatherDataRepository.findAverageHumidityByFarmAndDateRange(farm, startDate, endDate) ?: 0.0),
+            "recordCount" to weatherDataRepository.countRecordsInDateRange(farm, startDate, endDate),
+            "dataQuality" to calculateDataQuality(farm, startDate, endDate)
+        )
+    }
+
+    private fun calculateDataQuality(farm: Farm, startDate: LocalDate, endDate: LocalDate): Map<String, Any> {
+        val totalDays = endDate.toEpochDay() - startDate.toEpochDay() + 1
+        val recordCount = weatherDataRepository.countRecordsInDateRange(farm, startDate, endDate)
+        val missingTemperature = weatherDataRepository.countMissingTemperatureRecords(farm)
+        val missingRainfall = weatherDataRepository.countMissingRainfallRecords(farm)
+
+        return mapOf(
+            "completeness" to (recordCount.toDouble() / totalDays * 100),
+            "temperatureDataQuality" to ((recordCount - missingTemperature).toDouble() / recordCount * 100),
+            "rainfallDataQuality" to ((recordCount - missingRainfall).toDouble() / recordCount * 100)
+        )
     }
 
     // Helper method to map WeatherData entity to WeatherDataResponse DTO
