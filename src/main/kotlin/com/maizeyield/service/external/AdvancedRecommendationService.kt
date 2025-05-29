@@ -2,6 +2,7 @@ package com.maizeyield.service.external
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.maizeyield.dto.RecommendationResponse
+import com.maizeyield.exception.DataIntegrityException
 import com.maizeyield.model.PlantingSession
 import com.maizeyield.model.Recommendation
 import com.maizeyield.model.SoilData
@@ -264,6 +265,9 @@ class AdvancedRecommendationService(
                         )
                     )
                 }
+                else -> {
+                    throw DataIntegrityException("nitrogen levels are invalid")
+                }
             }
         }
 
@@ -296,6 +300,10 @@ class AdvancedRecommendationService(
                         )
                     )
                 }
+
+                else -> {
+                    throw DataIntegrityException("ph numbers  not valid")
+                }
             }
         }
 
@@ -327,6 +335,10 @@ class AdvancedRecommendationService(
                             confidence = 0.82f
                         )
                     )
+                }
+
+                else -> {
+                    throw DataIntegrityException("moisture levels are invalid")
                 }
             }
         }

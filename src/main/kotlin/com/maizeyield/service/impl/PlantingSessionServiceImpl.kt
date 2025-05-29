@@ -72,7 +72,8 @@ class PlantingSessionServiceImpl(
                     priority = recommendation.priority,
                     recommendationDate = recommendation.recommendationDate,
                     isViewed = recommendation.isViewed,
-                    isImplemented = recommendation.isImplemented
+                    isImplemented = recommendation.isImplemented,
+                    confidence = recommendation.confidence,
                 )
             }
 
