@@ -12,13 +12,11 @@ import com.maizeyield.repository.FarmRepository
 import com.maizeyield.repository.WeatherDataRepository
 import com.maizeyield.service.FarmService
 import com.maizeyield.service.WeatherService
+import com.maizeyield.service.external.WeatherAlert
+import com.maizeyield.service.external.WeatherApiService
 import mu.KotlinLogging
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.client.RestTemplate
-import org.springframework.web.util.UriComponentsBuilder
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -30,14 +28,8 @@ class WeatherServiceImpl(
     private val weatherDataRepository: WeatherDataRepository,
     private val farmRepository: FarmRepository,
     private val farmService: FarmService,
-    private val restTemplate: RestTemplate
+    private val weatherApiService: WeatherApiService // Inject the new external service
 ) : WeatherService {
-
-    @Value("\${weather.api.key:dummy-key}")
-    private lateinit var apiKey: String
-
-    @Value("\${weather.api.url:https://api.weatherapi.com/v1}")
-    private lateinit var apiUrl: String
 
     override fun getWeatherDataByFarmId(userId: Long, farmId: Long): List<WeatherDataResponse> {
         if (!farmService.isFarmOwner(userId, farmId)) {
@@ -109,7 +101,6 @@ class WeatherServiceImpl(
         )
 
         val savedWeatherData = weatherDataRepository.save(weatherData)
-
         return mapToWeatherDataResponse(savedWeatherData)
     }
 
@@ -138,7 +129,6 @@ class WeatherServiceImpl(
         )
 
         val savedWeatherData = weatherDataRepository.save(updatedWeatherData)
-
         return mapToWeatherDataResponse(savedWeatherData)
     }
 
@@ -178,68 +168,45 @@ class WeatherServiceImpl(
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
         // Check if farm has coordinates
-        val latitude = farm.latitude ?: throw IllegalArgumentException("Farm does not have latitude coordinates")
-        val longitude = farm.longitude ?: throw IllegalArgumentException("Farm does not have longitude coordinates")
+        if (farm.latitude == null || farm.longitude == null) {
+            throw IllegalArgumentException("Farm does not have latitude/longitude coordinates")
+        }
 
         try {
-            // Build the API URL for historical weather data (last 7 days)
-            val endDate = LocalDate.now()
-            val startDate = endDate.minusDays(7)
+            logger.info { "Fetching current weather data for farm: ${farm.name}" }
 
-            val url = UriComponentsBuilder.fromHttpUrl("$apiUrl/history.json")
-                .queryParam("key", apiKey)
-                .queryParam("q", "$latitude,$longitude")
-                .queryParam("dt", startDate.toString())
-                .queryParam("end_dt", endDate.toString())
-                .toUriString()
+            // Use the new external weather service
+            val currentWeatherResponse = weatherApiService.fetchCurrentWeather(farm)
 
-            // Make the API call
-            val response = restTemplate.getForEntity(url, Map::class.java)
+            return if (currentWeatherResponse != null) {
+                // Save current weather data to database
+                val existingData = weatherDataRepository.findByFarmAndDate(farm, currentWeatherResponse.date)
 
-            if (response.statusCode == HttpStatus.OK && response.body != null) {
-                val responseBody = response.body as Map<*, *>
-                val forecast = responseBody["forecast"] as? Map<*, *>
-                val forecastDays = forecast?.get("forecastday") as? List<*>
+                if (existingData.isEmpty) {
+                    val weatherData = WeatherData(
+                        farm = farm,
+                        date = currentWeatherResponse.date,
+                        minTemperature = currentWeatherResponse.minTemperature,
+                        maxTemperature = currentWeatherResponse.maxTemperature,
+                        averageTemperature = currentWeatherResponse.averageTemperature,
+                        rainfallMm = currentWeatherResponse.rainfallMm,
+                        humidityPercentage = currentWeatherResponse.humidityPercentage,
+                        windSpeedKmh = currentWeatherResponse.windSpeedKmh,
+                        solarRadiation = currentWeatherResponse.solarRadiation,
+                        source = currentWeatherResponse.source
+                    )
 
-                if (forecastDays != null) {
-                    val weatherDataList = mutableListOf<WeatherData>()
-
-                    for (day in forecastDays) {
-                        day as Map<*, *>
-                        val date = LocalDate.parse(day["date"] as String)
-                        val dayData = day["day"] as Map<*, *>
-
-                        // Check if we already have data for this date
-                        if (weatherDataRepository.findByFarmAndDate(farm, date).isPresent) {
-                            continue
-                        }
-
-                        val weatherData = WeatherData(
-                            farm = farm,
-                            date = date,
-                            minTemperature = BigDecimal(dayData["mintemp_c"].toString()),
-                            maxTemperature = BigDecimal(dayData["maxtemp_c"].toString()),
-                            averageTemperature = BigDecimal(dayData["avgtemp_c"].toString()),
-                            rainfallMm = BigDecimal(dayData["totalprecip_mm"].toString()),
-                            humidityPercentage = BigDecimal(dayData["avghumidity"].toString()),
-                            windSpeedKmh = BigDecimal(dayData["maxwind_kph"].toString()),
-                            source = "WeatherAPI"
-                        )
-
-                        weatherDataList.add(weatherData)
-                    }
-
-                    // Save all weather data
-                    if (weatherDataList.isNotEmpty()) {
-                        val savedWeatherData = weatherDataRepository.saveAll(weatherDataList)
-                        return savedWeatherData.map { mapToWeatherDataResponse(it) }
-                    }
+                    val savedWeatherData = weatherDataRepository.save(weatherData)
+                    listOf(mapToWeatherDataResponse(savedWeatherData))
+                } else {
+                    listOf(currentWeatherResponse)
                 }
+            } else {
+                emptyList()
             }
 
-            return emptyList()
         } catch (e: Exception) {
-            logger.error(e) { "Error fetching weather data from external API" }
+            logger.error(e) { "Error fetching weather data for farm: ${farm.name}" }
             throw ExternalServiceException("Failed to fetch weather data from external API", "WeatherAPI")
         }
     }
@@ -253,59 +220,20 @@ class WeatherServiceImpl(
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
         // Check if farm has coordinates
-        val latitude = farm.latitude ?: throw IllegalArgumentException("Farm does not have latitude coordinates")
-        val longitude = farm.longitude ?: throw IllegalArgumentException("Farm does not have longitude coordinates")
+        if (farm.latitude == null || farm.longitude == null) {
+            throw IllegalArgumentException("Farm does not have latitude/longitude coordinates")
+        }
 
         try {
-            // Limit days to 10 (or whatever the API supports)
-            val forecastDays = if (days > 10) 10 else days
+            logger.info { "Fetching weather forecast for farm: ${farm.name}" }
 
-            // Build the API URL for forecast
-            val url = UriComponentsBuilder.fromHttpUrl("$apiUrl/forecast.json")
-                .queryParam("key", apiKey)
-                .queryParam("q", "$latitude,$longitude")
-                .queryParam("days", forecastDays)
-                .toUriString()
+            // Use the new external weather service
+            val forecastData = weatherApiService.fetchWeatherForecast(farm, days)
 
-            // Make the API call
-            val response = restTemplate.getForEntity(url, Map::class.java)
+            return WeatherForecastResponse(forecastData)
 
-            if (response.statusCode == HttpStatus.OK && response.body != null) {
-                val responseBody = response.body as Map<*, *>
-                val forecast = responseBody["forecast"] as? Map<*, *>
-                val forecastDays = forecast?.get("forecastday") as? List<*>
-
-                if (forecastDays != null) {
-                    val forecasts = mutableListOf<WeatherDataResponse>()
-
-                    for (day in forecastDays) {
-                        day as Map<*, *>
-                        val date = LocalDate.parse(day["date"] as String)
-                        val dayData = day["day"] as Map<*, *>
-
-                        val weatherData = WeatherDataResponse(
-                            id = -1, // Not saved to database
-                            farmId = farm.id!!,
-                            date = date,
-                            minTemperature = BigDecimal(dayData["mintemp_c"].toString()),
-                            maxTemperature = BigDecimal(dayData["maxtemp_c"].toString()),
-                            averageTemperature = BigDecimal(dayData["avgtemp_c"].toString()),
-                            rainfallMm = BigDecimal(dayData["totalprecip_mm"].toString()),
-                            humidityPercentage = BigDecimal(dayData["avghumidity"].toString()),
-                            windSpeedKmh = BigDecimal(dayData["maxwind_kph"].toString()),
-                            source = "WeatherAPI Forecast"
-                        )
-
-                        forecasts.add(weatherData)
-                    }
-
-                    return WeatherForecastResponse(forecasts)
-                }
-            }
-
-            throw ExternalServiceException("Failed to parse weather forecast from API", "WeatherAPI")
         } catch (e: Exception) {
-            logger.error(e) { "Error fetching weather forecast from external API" }
+            logger.error(e) { "Error fetching weather forecast for farm: ${farm.name}" }
             throw ExternalServiceException("Failed to fetch weather forecast from external API", "WeatherAPI")
         }
     }
@@ -324,7 +252,6 @@ class WeatherServiceImpl(
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
         val avgRainfall = weatherDataRepository.findAverageRainfallByFarmAndDateRange(farm, startDate, endDate)
-
         return avgRainfall?.let { BigDecimal(it).setScale(2, RoundingMode.HALF_UP) }
     }
 
@@ -342,8 +269,45 @@ class WeatherServiceImpl(
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
         val avgTemperature = weatherDataRepository.findAverageTemperatureByFarmAndDateRange(farm, startDate, endDate)
-
         return avgTemperature?.let { BigDecimal(it).setScale(2, RoundingMode.HALF_UP) }
+    }
+
+    /**
+     * Fetch weather alerts for a farm
+     */
+    fun getWeatherAlerts(userId: Long, farmId: Long): List<WeatherAlert> {
+        if (!farmService.isFarmOwner(userId, farmId)) {
+            throw UnauthorizedAccessException("You don't have permission to access this farm")
+        }
+
+        val farm = farmRepository.findById(farmId)
+            .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+        return try {
+            weatherApiService.fetchWeatherAlerts(farm)
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching weather alerts for farm: ${farm.name}" }
+            emptyList()
+        }
+    }
+
+    /**
+     * Fetch historical weather data for a specific date
+     */
+    fun fetchHistoricalWeatherData(userId: Long, farmId: Long, date: LocalDate): WeatherDataResponse? {
+        if (!farmService.isFarmOwner(userId, farmId)) {
+            throw UnauthorizedAccessException("You don't have permission to access this farm")
+        }
+
+        val farm = farmRepository.findById(farmId)
+            .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+        return try {
+            weatherApiService.fetchHistoricalWeather(farm, date)
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching historical weather data for farm: ${farm.name} on date: $date" }
+            null
+        }
     }
 
     // Helper method to map WeatherData entity to WeatherDataResponse DTO

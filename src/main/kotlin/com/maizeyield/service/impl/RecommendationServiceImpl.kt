@@ -9,6 +9,7 @@ import com.maizeyield.model.Recommendation
 import com.maizeyield.repository.*
 import com.maizeyield.service.FarmService
 import com.maizeyield.service.RecommendationService
+import com.maizeyield.service.external.AdvancedRecommendationService
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -23,6 +24,7 @@ class RecommendationServiceImpl(
     private val soilDataRepository: SoilDataRepository,
     private val weatherDataRepository: WeatherDataRepository,
     private val yieldPredictionRepository: YieldPredictionRepository,
+    private val advancedRecommendationService: AdvancedRecommendationService, // New service injection
     private val farmService: FarmService
 ) : RecommendationService {
 
@@ -165,11 +167,10 @@ class RecommendationServiceImpl(
         }
 
         try {
-            logger.info { "Generating recommendations for planting session ID: $plantingSessionId" }
+            logger.info { "Generating advanced recommendations for planting session ID: $plantingSessionId" }
 
             val farm = session.farm
             val currentDate = LocalDate.now()
-            val daysSincePlanting = currentDate.toEpochDay() - session.plantingDate.toEpochDay()
 
             // Get latest soil data
             val latestSoilData = soilDataRepository.findLatestByFarm(farm).orElse(null)
@@ -181,269 +182,12 @@ class RecommendationServiceImpl(
                 currentDate
             )
 
-            // Get latest prediction
-            val latestPrediction = yieldPredictionRepository.findLatestByPlantingSession(session).orElse(null)
-
-            val recommendations = mutableListOf<Recommendation>()
-
-            // Generate irrigation recommendations based on weather data
-            if (recentWeatherData.isNotEmpty()) {
-                val avgRainfall = recentWeatherData.mapNotNull { it.rainfallMm?.toDouble() }.average()
-
-                if (!avgRainfall.isNaN() && avgRainfall < 5.0) {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "IRRIGATION",
-                            title = "Increase Irrigation",
-                            description = "Recent rainfall has been below optimal levels (${String.format("%.1f", avgRainfall)}mm/day average). Consider increasing irrigation frequency to maintain soil moisture for optimal crop growth.",
-                            priority = "HIGH"
-                        )
-                    )
-                } else if (!avgRainfall.isNaN() && avgRainfall > 20.0) {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "DRAINAGE",
-                            title = "Improve Drainage",
-                            description = "Recent rainfall has been excessive (${String.format("%.1f", avgRainfall)}mm/day average). Ensure proper drainage to prevent waterlogging and root rot.",
-                            priority = "MEDIUM"
-                        )
-                    )
-                }
-
-                // Temperature-based recommendations
-                val avgTemperature = recentWeatherData.mapNotNull { it.averageTemperature?.toDouble() }.average()
-                if (!avgTemperature.isNaN() && avgTemperature > 35.0) {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "HEAT_STRESS",
-                            title = "Heat Stress Management",
-                            description = "Recent temperatures have been high (${String.format("%.1f", avgTemperature)}°C average). Consider additional irrigation and mulching to reduce heat stress on crops.",
-                            priority = "HIGH"
-                        )
-                    )
-                }
-            }
-
-            // Generate fertilizer recommendations based on soil data
-            if (latestSoilData != null) {
-                // Nitrogen recommendations
-                latestSoilData.nitrogenContent?.let { nitrogen ->
-                    if (nitrogen.toDouble() < 1.5) {
-                        recommendations.add(
-                            Recommendation(
-                                plantingSession = session,
-                                recommendationDate = currentDate,
-                                category = "FERTILIZATION",
-                                title = "Nitrogen Fertilizer Application",
-                                description = "Soil nitrogen content is low (${nitrogen}%). Apply nitrogen-rich fertilizer such as urea at 200-250 kg/ha to support vegetative growth.",
-                                priority = "HIGH"
-                            )
-                        )
-                    }
-                }
-
-                // Phosphorus recommendations
-                latestSoilData.phosphorusContent?.let { phosphorus ->
-                    if (phosphorus.toDouble() < 1.2) {
-                        recommendations.add(
-                            Recommendation(
-                                plantingSession = session,
-                                recommendationDate = currentDate,
-                                category = "FERTILIZATION",
-                                title = "Phosphorus Fertilizer Application",
-                                description = "Soil phosphorus content is low (${phosphorus}%). Apply phosphorus-rich fertilizer such as DAP at 100-150 kg/ha to support root development.",
-                                priority = "MEDIUM"
-                            )
-                        )
-                    }
-                }
-
-                // pH recommendations
-                latestSoilData.phLevel?.let { ph ->
-                    when (ph.toDouble()) {
-                        in 0.0..5.5 -> recommendations.add(
-                            Recommendation(
-                                plantingSession = session,
-                                recommendationDate = currentDate,
-                                category = "SOIL_MANAGEMENT",
-                                title = "Soil pH Adjustment",
-                                description = "Soil pH is acidic (${ph}). Apply agricultural lime at 2-4 tonnes/ha to raise pH to optimal range (6.0-7.0) for maize cultivation.",
-                                priority = "MEDIUM"
-                            )
-                        )
-                        in 7.5..14.0 -> recommendations.add(
-                            Recommendation(
-                                plantingSession = session,
-                                recommendationDate = currentDate,
-                                category = "SOIL_MANAGEMENT",
-                                title = "Soil pH Adjustment",
-                                description = "Soil pH is alkaline (${ph}). Apply organic matter or sulfur to lower pH to optimal range (6.0-7.0) for maize cultivation.",
-                                priority = "MEDIUM"
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Growth stage-based recommendations
-            when (daysSincePlanting.toInt()) {
-                in 0..14 -> {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "CROP_MANAGEMENT",
-                            title = "Early Growth Monitoring",
-                            description = "Monitor seedling emergence and check for pest damage. Ensure adequate soil moisture for germination.",
-                            priority = "MEDIUM"
-                        )
-                    )
-                }
-                in 15..30 -> {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "WEED_CONTROL",
-                            title = "Weed Management",
-                            description = "Apply pre-emergence herbicide or conduct manual weeding to control weeds during early vegetative growth stage.",
-                            priority = "HIGH"
-                        )
-                    )
-                }
-                in 31..60 -> {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "FERTILIZATION",
-                            title = "Side-dress Nitrogen Application",
-                            description = "Apply additional nitrogen fertilizer as side-dressing during rapid growth phase to support vigorous vegetative development.",
-                            priority = "HIGH"
-                        )
-                    )
-                }
-                in 61..80 -> {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "PEST_CONTROL",
-                            title = "Monitor for Pests",
-                            description = "Regularly inspect plants for common pests like fall armyworm and stem borers during tasseling stage. Apply appropriate pesticides if needed.",
-                            priority = "HIGH"
-                        )
-                    )
-                }
-                in 81..100 -> {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "DISEASE_CONTROL",
-                            title = "Disease Prevention",
-                            description = "Monitor for fungal diseases during kernel development. Ensure good air circulation and avoid overhead irrigation.",
-                            priority = "MEDIUM"
-                        )
-                    )
-                }
-                in 101..120 -> {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "HARVEST_PREP",
-                            title = "Harvest Preparation",
-                            description = "Begin monitoring kernel moisture content. Prepare for harvest when moisture drops to 20-25%.",
-                            priority = "MEDIUM"
-                        )
-                    )
-                }
-                else -> {
-                    if (daysSincePlanting > 120) {
-                        recommendations.add(
-                            Recommendation(
-                                plantingSession = session,
-                                recommendationDate = currentDate,
-                                category = "HARVEST",
-                                title = "Ready for Harvest",
-                                description = "Crop should be ready for harvest. Check kernel moisture and harvest when conditions are optimal.",
-                                priority = "HIGH"
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Prediction-based recommendations
-            latestPrediction?.let { prediction ->
-                if (prediction.confidencePercentage.toDouble() < 70.0) {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "DATA_COLLECTION",
-                            title = "Improve Data Collection",
-                            description = "Prediction confidence is low (${prediction.confidencePercentage}%). Consider collecting more soil and weather data to improve yield predictions.",
-                            priority = "LOW"
-                        )
-                    )
-                }
-
-                if (prediction.predictedYieldTonsPerHectare.toDouble() < 3.0) {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "YIELD_IMPROVEMENT",
-                            title = "Yield Enhancement Strategies",
-                            description = "Predicted yield is below average (${prediction.predictedYieldTonsPerHectare} tonnes/ha). Consider implementing intensive management practices including optimal fertilization and pest control.",
-                            priority = "HIGH"
-                        )
-                    )
-                }
-            }
-
-            // General recommendations based on variety
-            if (session.maizeVariety.droughtResistance && recentWeatherData.isNotEmpty()) {
-                val avgRainfall = recentWeatherData.mapNotNull { it.rainfallMm?.toDouble() }.average()
-                if (!avgRainfall.isNaN() && avgRainfall < 2.0) {
-                    recommendations.add(
-                        Recommendation(
-                            plantingSession = session,
-                            recommendationDate = currentDate,
-                            category = "VARIETY_MANAGEMENT",
-                            title = "Leverage Drought Resistance",
-                            description = "Your drought-resistant variety can tolerate low rainfall, but ensure minimal irrigation during critical growth stages for optimal yield.",
-                            priority = "LOW"
-                        )
-                    )
-                }
-            }
-
-            // Save all recommendations
-            val savedRecommendations = if (recommendations.isNotEmpty()) {
-                recommendationRepository.saveAll(recommendations)
-            } else {
-                // If no specific recommendations are generated, create a general one
-                val generalRecommendation = Recommendation(
-                    plantingSession = session,
-                    recommendationDate = currentDate,
-                    category = "GENERAL",
-                    title = "Continue Regular Monitoring",
-                    description = "Your maize crop appears to be in good condition. Continue regular monitoring and maintain current management practices.",
-                    priority = "LOW"
-                )
-                listOf(recommendationRepository.save(generalRecommendation))
-            }
-
-            return savedRecommendations.map { mapToRecommendationResponse(it) }
+            // Use the advanced recommendation service
+            return advancedRecommendationService.generateAdvancedRecommendations(
+                session,
+                recentWeatherData,
+                latestSoilData
+            )
 
         } catch (e: Exception) {
             logger.error(e) { "Error generating recommendations for planting session $plantingSessionId" }
@@ -462,7 +206,8 @@ class RecommendationServiceImpl(
             priority = recommendation.priority,
             recommendationDate = recommendation.recommendationDate,
             isViewed = recommendation.isViewed,
-            isImplemented = recommendation.isImplemented
+            isImplemented = recommendation.isImplemented,
+            confidence = recommendation.confidence
         )
     }
 }

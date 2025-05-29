@@ -32,7 +32,7 @@ data class WeatherDataUpdateRequest(
 // Response DTOs
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class WeatherDataResponse(
-    val id: Long,
+    val id: Long? = null,
     val farmId: Long,
     val date: LocalDate,
     val minTemperature: BigDecimal? = null,
@@ -42,8 +42,13 @@ data class WeatherDataResponse(
     val humidityPercentage: BigDecimal? = null,
     val windSpeedKmh: BigDecimal? = null,
     val solarRadiation: BigDecimal? = null,
-    val source: String
+    val source: String,
+    val pressure: BigDecimal? = null,
+    val uvIndex: BigDecimal? = null,
+    val visibility: BigDecimal? = null,
+    val cloudCover: BigDecimal? = null,
 )
+
 
 // Special DTOs for weather data retrieval from external API
 data class WeatherForecastRequest(

@@ -29,7 +29,8 @@ data class RecommendationResponse(
     val priority: String,
     val recommendationDate: LocalDate,
     val isViewed: Boolean,
-    val isImplemented: Boolean
+    val isImplemented: Boolean,
+    val confidence: Float,
 )
 
 // Special DTOs for recommendation generation

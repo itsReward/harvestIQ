@@ -44,7 +44,10 @@ data class Recommendation(
 
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
-    var updatedAt: LocalDateTime = LocalDateTime.now()
+    var updatedAt: LocalDateTime = LocalDateTime.now(),
+
+    @Column(name = "confidence", nullable = false)
+    var confidence: Float = 0f,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
