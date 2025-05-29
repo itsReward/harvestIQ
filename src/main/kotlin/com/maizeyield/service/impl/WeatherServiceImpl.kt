@@ -1,6 +1,5 @@
 package com.maizeyield.service.impl
 
-import com.maizeyield.config.ResilientWeatherService
 import com.maizeyield.config.WeatherDataValidator
 import com.maizeyield.dto.WeatherDataCreateRequest
 import com.maizeyield.dto.WeatherDataResponse
@@ -16,9 +15,12 @@ import com.maizeyield.repository.WeatherDataRepository
 import com.maizeyield.service.FarmService
 import com.maizeyield.service.WeatherService
 import com.maizeyield.service.external.WeatherAlert
+import com.maizeyield.service.external.WeatherApiService
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.cache.annotation.Cacheable
+import org.springframework.retry.annotation.Backoff
+import org.springframework.retry.annotation.Retryable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -32,11 +34,143 @@ class WeatherServiceImpl(
     private val weatherDataRepository: WeatherDataRepository,
     private val farmRepository: FarmRepository,
     private val farmService: FarmService,
-    private val resilientWeatherService: ResilientWeatherService,
+    private val weatherApiService: WeatherApiService, // Direct injection
     private val weatherDataValidator: WeatherDataValidator,
     @Value("\${weather.data.validation.enabled:true}") private val validationEnabled: Boolean,
-    @Value("\${weather.data.cache.ttl-minutes:30}") private val cacheTtlMinutes: Int
+    @Value("\${weather.data.cache.ttl-minutes:30}") private val cacheTtlMinutes: Int,
+    @Value("\${weather.fallback.enabled:true}") private val fallbackEnabled: Boolean,
+    @Value("\${weather.fallback.providers:weatherapi,openweather}") fallbackProvidersString: String
 ) : WeatherService {
+
+    private val fallbackProviders: List<String> = fallbackProvidersString.split(",")
+
+    @Retryable(
+        value = [Exception::class],
+        maxAttempts = 3,
+        backoff = Backoff(delay = 1000, multiplier = 2.0)
+    )
+    private fun fetchCurrentWeatherWithFallback(farm: Farm): WeatherDataResponse? {
+        return try {
+            logger.info { "Attempting to fetch current weather for farm: ${farm.name}" }
+            weatherApiService.fetchCurrentWeather(farm)
+        } catch (e: Exception) {
+            logger.warn(e) { "Primary weather service failed for farm: ${farm.name}" }
+            if (fallbackEnabled) {
+                attemptFallbackCurrentWeather(farm)
+            } else {
+                null
+            }
+        }
+    }
+
+    @Retryable(
+        value = [Exception::class],
+        maxAttempts = 3,
+        backoff = Backoff(delay = 1000, multiplier = 2.0)
+    )
+    private fun fetchWeatherForecastWithFallback(farm: Farm, days: Int): List<WeatherDataResponse> {
+        return try {
+            logger.info { "Attempting to fetch weather forecast for farm: ${farm.name}" }
+            weatherApiService.fetchWeatherForecast(farm, days)
+        } catch (e: Exception) {
+            logger.warn(e) { "Primary weather service failed for forecast for farm: ${farm.name}" }
+            if (fallbackEnabled) {
+                attemptFallbackForecast(farm, days)
+            } else {
+                emptyList()
+            }
+        }
+    }
+
+    @Retryable(
+        value = [Exception::class],
+        maxAttempts = 3,
+        backoff = Backoff(delay = 1000, multiplier = 2.0)
+    )
+    private fun fetchHistoricalWeatherWithFallback(farm: Farm, date: LocalDate): WeatherDataResponse? {
+        return try {
+            logger.info { "Attempting to fetch historical weather for farm: ${farm.name} on $date" }
+            weatherApiService.fetchHistoricalWeather(farm, date)
+        } catch (e: Exception) {
+            logger.warn(e) { "Primary weather service failed for historical data for farm: ${farm.name}" }
+            if (fallbackEnabled) {
+                attemptFallbackHistorical(farm, date)
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun fetchWeatherAlertsWithFallback(farm: Farm): List<WeatherAlert> {
+        return try {
+            weatherApiService.fetchWeatherAlerts(farm)
+        } catch (e: Exception) {
+            logger.warn(e) { "Failed to fetch weather alerts for farm: ${farm.name}" }
+            emptyList()
+        }
+    }
+
+    private fun attemptFallbackCurrentWeather(farm: Farm): WeatherDataResponse? {
+        logger.info { "Attempting fallback weather providers for current weather" }
+
+        fallbackProviders.forEach { provider ->
+            try {
+                logger.info { "Trying fallback provider: $provider" }
+                // For now, we'll use the same service but you can extend this
+                // to use different configurations based on the provider
+                val result = weatherApiService.fetchCurrentWeather(farm)
+                if (result != null) {
+                    logger.info { "Successfully retrieved current weather from fallback provider: $provider" }
+                    return result
+                }
+            } catch (e: Exception) {
+                logger.warn(e) { "Fallback provider $provider also failed" }
+            }
+        }
+
+        logger.error { "All weather providers failed for current weather" }
+        return null
+    }
+
+    private fun attemptFallbackForecast(farm: Farm, days: Int): List<WeatherDataResponse> {
+        logger.info { "Attempting fallback weather providers for forecast" }
+
+        fallbackProviders.forEach { provider ->
+            try {
+                logger.info { "Trying fallback provider: $provider" }
+                val result = weatherApiService.fetchWeatherForecast(farm, days)
+                if (result.isNotEmpty()) {
+                    logger.info { "Successfully retrieved forecast from fallback provider: $provider" }
+                    return result
+                }
+            } catch (e: Exception) {
+                logger.warn(e) { "Fallback provider $provider also failed for forecast" }
+            }
+        }
+
+        logger.error { "All weather providers failed for forecast" }
+        return emptyList()
+    }
+
+    private fun attemptFallbackHistorical(farm: Farm, date: LocalDate): WeatherDataResponse? {
+        logger.info { "Attempting fallback weather providers for historical data" }
+
+        fallbackProviders.forEach { provider ->
+            try {
+                logger.info { "Trying fallback provider: $provider" }
+                val result = weatherApiService.fetchHistoricalWeather(farm, date)
+                if (result != null) {
+                    logger.info { "Successfully retrieved historical data from fallback provider: $provider" }
+                    return result
+                }
+            } catch (e: Exception) {
+                logger.warn(e) { "Fallback provider $provider also failed for historical data" }
+            }
+        }
+
+        logger.error { "All weather providers failed for historical data" }
+        return null
+    }
 
     override fun getWeatherDataByFarmId(userId: Long, farmId: Long): List<WeatherDataResponse> {
         if (!farmService.isFarmOwner(userId, farmId)) {
@@ -183,8 +317,8 @@ class WeatherServiceImpl(
         try {
             logger.info { "Fetching current weather data for farm: ${farm.name}" }
 
-            // Use the resilient weather service with fallback support
-            val currentWeatherResponse = resilientWeatherService.fetchCurrentWeatherWithFallback(farm)
+            // Use the internal resilient weather service methods
+            val currentWeatherResponse = fetchCurrentWeatherWithFallback(farm)
 
             return if (currentWeatherResponse != null) {
                 // Validate data if validation is enabled
@@ -249,8 +383,8 @@ class WeatherServiceImpl(
         try {
             logger.info { "Fetching weather forecast for farm: ${farm.name}" }
 
-            // Use the resilient weather service with fallback support
-            val forecastData = resilientWeatherService.fetchWeatherForecastWithFallback(farm, days)
+            // Use the internal resilient weather service methods
+            val forecastData = fetchWeatherForecastWithFallback(farm, days)
 
             // Validate and sanitize forecast data if validation is enabled
             val validatedForecastData = if (validationEnabled) {
@@ -320,7 +454,7 @@ class WeatherServiceImpl(
             .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
 
         return try {
-            resilientWeatherService.fetchWeatherAlertsWithFallback(farm)
+            fetchWeatherAlertsWithFallback(farm)
         } catch (e: Exception) {
             logger.error(e) { "Error fetching weather alerts for farm: ${farm.name}" }
             emptyList()
@@ -346,7 +480,7 @@ class WeatherServiceImpl(
 
         // Fetch from external API if not found locally
         return try {
-            val historicalData = resilientWeatherService.fetchHistoricalWeatherWithFallback(farm, date)
+            val historicalData = fetchHistoricalWeatherWithFallback(farm, date)
 
             // Save to database if validation passes
             historicalData?.let { data ->
