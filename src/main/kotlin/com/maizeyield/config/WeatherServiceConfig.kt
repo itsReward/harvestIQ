@@ -1,20 +1,10 @@
 package com.maizeyield.config
 
 import com.maizeyield.dto.WeatherDataResponse
-import com.maizeyield.model.Farm
-import com.maizeyield.service.external.WeatherAlert
-import com.maizeyield.service.external.WeatherApiService
 import mu.KotlinLogging
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Primary
-import org.springframework.retry.annotation.Backoff
 import org.springframework.retry.annotation.EnableRetry
-import org.springframework.retry.annotation.Retryable
 import org.springframework.stereotype.Service
-import org.springframework.web.reactive.function.client.WebClient
-import java.time.LocalDate
 
 private val logger = KotlinLogging.logger {}
 
