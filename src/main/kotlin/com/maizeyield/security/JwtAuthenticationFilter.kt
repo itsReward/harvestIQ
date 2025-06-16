@@ -13,7 +13,6 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 private val logger = KotlinLogging.logger {}
 
-@Component
 class JwtAuthenticationFilter(
     private val jwtTokenProvider: JwtTokenProvider,
     private val customUserDetailsService: CustomUserDetailsService
