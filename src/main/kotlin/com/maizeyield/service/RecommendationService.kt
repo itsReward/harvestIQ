@@ -1,57 +1,68 @@
 package com.maizeyield.service
 
-import com.maizeyield.dto.RecommendationCreateRequest
 import com.maizeyield.dto.RecommendationResponse
-import com.maizeyield.dto.RecommendationUpdateRequest
+import com.maizeyield.dto.YieldPredictionResponse
 
 interface RecommendationService {
+
+    /**
+     * Core method: Analyzes yield prediction and generates contextual recommendations
+     * when prediction is below optimum or expected levels
+     */
+    fun analyzeAndGenerateRecommendations(
+        userId: Long,
+        plantingSessionId: Long,
+        predictionResult: YieldPredictionResponse
+    ): List<RecommendationResponse>
+
     /**
      * Get all recommendations for a planting session
      */
-    fun getRecommendationsByPlantingSessionId(userId: Long, plantingSessionId: Long): List<RecommendationResponse>
+    fun getRecommendationsByPlantingSession(
+        userId: Long,
+        plantingSessionId: Long
+    ): List<RecommendationResponse>
 
     /**
-     * Get recommendation by ID
+     * Get recommendations by category (e.g., IRRIGATION, FERTILIZATION, PEST_CONTROL)
      */
-    fun getRecommendationById(userId: Long, recommendationId: Long): RecommendationResponse
+    fun getRecommendationsByCategory(
+        userId: Long,
+        plantingSessionId: Long,
+        category: String
+    ): List<RecommendationResponse>
 
     /**
-     * Create a new recommendation
+     * Get recommendations by priority (CRITICAL, HIGH, MEDIUM, LOW)
      */
-    fun createRecommendation(userId: Long, plantingSessionId: Long, request: RecommendationCreateRequest): RecommendationResponse
+    fun getRecommendationsByPriority(
+        userId: Long,
+        plantingSessionId: Long,
+        priority: String
+    ): List<RecommendationResponse>
 
     /**
-     * Update recommendation status
+     * Mark a recommendation as viewed by the farmer
      */
-    fun updateRecommendation(userId: Long, recommendationId: Long, request: RecommendationUpdateRequest): RecommendationResponse
+    fun markRecommendationAsViewed(
+        userId: Long,
+        recommendationId: Long
+    ): RecommendationResponse
 
     /**
-     * Delete a recommendation
+     * Mark a recommendation as implemented by the farmer
      */
-    fun deleteRecommendation(userId: Long, recommendationId: Long): Boolean
+    fun markRecommendationAsImplemented(
+        userId: Long,
+        recommendationId: Long
+    ): RecommendationResponse
 
     /**
-     * Get unviewed recommendations for a planting session
+     * Generate general recommendations for a planting session
+     * (fallback method when no specific prediction analysis is needed)
      */
-    fun getUnviewedRecommendations(userId: Long, plantingSessionId: Long): List<RecommendationResponse>
-
-    /**
-     * Get unimplemented recommendations for a planting session
-     */
-    fun getUnimplementedRecommendations(userId: Long, plantingSessionId: Long): List<RecommendationResponse>
-
-    /**
-     * Get recommendations by category for a planting session
-     */
-    fun getRecommendationsByCategory(userId: Long, plantingSessionId: Long, category: String): List<RecommendationResponse>
-
-    /**
-     * Get recommendations by priority for a planting session
-     */
-    fun getRecommendationsByPriority(userId: Long, plantingSessionId: Long, priority: String): List<RecommendationResponse>
-
-    /**
-     * Generate recommendations for a planting session based on current conditions
-     */
-    fun generateRecommendations(userId: Long, plantingSessionId: Long): List<RecommendationResponse>
+    fun generateRecommendations(
+        userId: Long,
+        plantingSessionId: Long
+    ): List<RecommendationResponse>
 }
