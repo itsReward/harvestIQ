@@ -41,4 +41,6 @@ interface YieldHistoryRepository : JpaRepository<YieldHistory, Long> {
 
     @Query("SELECT AVG(yh.yieldTonsPerHectare) FROM YieldHistory yh WHERE yh.plantingSession.farm = :farm AND yh.plantingSession.maizeVariety = :maizeVariety")
     fun findAverageYieldByFarmAndMaizeVariety(farm: Farm, maizeVariety: MaizeVariety): BigDecimal?
+
+
 }

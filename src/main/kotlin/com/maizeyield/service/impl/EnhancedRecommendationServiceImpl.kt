@@ -117,8 +117,13 @@ class EnhancedRecommendationServiceImpl(
             session.farm, session.maizeVariety
         ).map { it.yieldTonsPerHectare.toDouble() }.takeIf { it.isNotEmpty() }?.average()
 
-        // Use variety's average yield or optimal target
-        return historicalAverage ?: session.maizeVariety.averageYieldTonsPerHectare ?: OPTIMAL_YIELD_TARGET
+        // If no historical data for this farm, get variety average across all farms
+        val varietyAverage = if (historicalAverage == null) {
+            yieldHistoryRepository.findAverageYieldByFarmAndMaizeVariety(session.farm, session.maizeVariety)?.toDouble()
+        } else null
+
+        // Use historical average, then variety average, then optimal target
+        return historicalAverage ?: varietyAverage ?: OPTIMAL_YIELD_TARGET
     }
 
     private fun identifyRiskFactors(session: PlantingSession, prediction: YieldPredictionResponse): List<String> {
