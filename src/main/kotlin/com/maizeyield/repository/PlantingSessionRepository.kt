@@ -1,6 +1,7 @@
 package com.maizeyield.repository
 
 import com.maizeyield.model.Farm
+import com.maizeyield.model.MaizeVariety
 import com.maizeyield.model.PlantingSession
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -21,4 +22,6 @@ interface PlantingSessionRepository : JpaRepository<PlantingSession, Long> {
     fun findLatestByFarm(farm: Farm): Optional<PlantingSession>
 
     fun existsByFarmAndPlantingDate(farm: Farm, plantingDate: LocalDate): Boolean
+
+    fun findByFarmAndMaizeVariety(farm: Farm, maizeVariety: MaizeVariety): List<PlantingSession>
 }

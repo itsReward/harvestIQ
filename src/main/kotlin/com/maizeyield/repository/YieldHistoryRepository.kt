@@ -1,6 +1,7 @@
 package com.maizeyield.repository
 
 import com.maizeyield.model.Farm
+import com.maizeyield.model.MaizeVariety
 import com.maizeyield.model.PlantingSession
 import com.maizeyield.model.YieldHistory
 import org.springframework.data.jpa.repository.JpaRepository
@@ -34,4 +35,10 @@ interface YieldHistoryRepository : JpaRepository<YieldHistory, Long> {
 
     @Query("SELECT yh FROM YieldHistory yh WHERE yh.plantingSession.farm = :farm ORDER BY yh.harvestDate DESC")
     fun findByFarmOrderByHarvestDateDesc(farm: Farm): List<YieldHistory>
+
+    @Query("SELECT yh FROM YieldHistory yh WHERE yh.plantingSession.farm = :farm AND yh.plantingSession.maizeVariety = :maizeVariety")
+    fun findByFarmAndMaizeVariety(farm: Farm, maizeVariety: MaizeVariety): List<YieldHistory>
+
+    @Query("SELECT AVG(yh.yieldTonsPerHectare) FROM YieldHistory yh WHERE yh.plantingSession.farm = :farm AND yh.plantingSession.maizeVariety = :maizeVariety")
+    fun findAverageYieldByFarmAndMaizeVariety(farm: Farm, maizeVariety: MaizeVariety): BigDecimal?
 }

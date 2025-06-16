@@ -131,15 +131,15 @@ class EnhancedRecommendationServiceImpl(
             farm, currentDate.minusDays(7), currentDate
         )
 
-        if (recentWeather.any { it.rainfall == null || it.rainfall!! < 5.0 }) {
+        if (recentWeather.any { it.rainfallMm == null || it.rainfallMm!! < 5.0.toBigDecimal() }) {
             riskFactors.add("DROUGHT_STRESS")
         }
 
-        if (recentWeather.any { it.maxTemp != null && it.maxTemp!! > 35.0 }) {
+        if (recentWeather.any { it.maxTemperature != null && it.maxTemperature!! > 35.0.toBigDecimal() }) {
             riskFactors.add("HEAT_STRESS")
         }
 
-        if (recentWeather.any { it.rainfall != null && it.rainfall!! > 50.0 }) {
+        if (recentWeather.any { it.rainfallMm != null && it.rainfallMm!! > 50.0.toBigDecimal() }) {
             riskFactors.add("EXCESSIVE_RAINFALL")
         }
 

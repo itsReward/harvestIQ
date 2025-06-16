@@ -25,4 +25,6 @@ interface RecommendationRepository : JpaRepository<Recommendation, Long> {
 
     @Query("SELECT COUNT(r) FROM Recommendation r WHERE r.plantingSession = :plantingSession AND r.isImplemented = false AND r.priority IN ('HIGH', 'CRITICAL')")
     fun countUnimplementedHighPriorityRecommendations(plantingSession: PlantingSession): Long
+
+    fun findByPlantingSessionOrderByRecommendationDateDesc(plantingSession: PlantingSession): List<Recommendation>
 }
