@@ -13,6 +13,7 @@ import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -68,18 +69,20 @@ class AuthServiceImpl(
 
         SecurityContextHolder.getContext().authentication = authentication
 
-        val user = userRepository.findByUsername(request.username)
-            .orElseThrow { IllegalArgumentException("User not found") }
+        val user = when(val response = userRepository.findByUsername(request.username)) {
+            null -> throw UsernameNotFoundException("User not found")
+            else -> response
+        }
 
-        // Update last login time
-        user.lastLogin = LocalDateTime.now()
+        // Update last login time - make sure this is a mutable property
+        user.lastLogin = LocalDateTime.now() // This should work if lastLogin is var, not val
         userRepository.save(user)
 
-        val jwt = jwtTokenProvider.generateToken(user.username)
+        val jwt = jwtTokenProvider.generateToken(authentication) // This should work
 
         return LoginResponse(
             token = jwt,
-            expiresIn = jwtTokenProvider.getExpirationInMs(),
+            expiresIn = jwtTokenProvider.getExpirationInMs(), // This should work
             userId = user.id!!,
             username = user.username
         )

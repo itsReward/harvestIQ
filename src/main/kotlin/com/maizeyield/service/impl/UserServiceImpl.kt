@@ -32,8 +32,10 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
         val authentication = SecurityContextHolder.getContext().authentication
         val username = authentication.name
 
-        val user = userRepository.findByUsername(username)
-            .orElseThrow { IllegalArgumentException("User not found with username: $username") }
+        val user = when(val response = userRepository.findByUsername(username)){
+            null -> throw IllegalArgumentException("User not found with username: $username")
+            else -> response
+        }
 
         return UserResponse(
             id = user.id!!,

@@ -1,5 +1,6 @@
 package com.maizeyield.config
 
+import com.maizeyield.security.CustomUserDetailsService
 import com.maizeyield.security.JwtAuthenticationFilter
 import com.maizeyield.security.JwtTokenProvider
 import org.springframework.context.annotation.Bean
@@ -10,6 +11,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
@@ -21,7 +23,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-class SecurityConfig(private val jwtTokenProvider: JwtTokenProvider) {
+class SecurityConfig(
+    private val jwtTokenProvider: JwtTokenProvider,
+    private val userDetailsService: CustomUserDetailsService,
+) {
 
     @Bean
     fun passwordEncoder(): PasswordEncoder {
@@ -35,7 +40,7 @@ class SecurityConfig(private val jwtTokenProvider: JwtTokenProvider) {
 
     @Bean
     fun jwtAuthenticationFilter(): JwtAuthenticationFilter {
-        return JwtAuthenticationFilter(jwtTokenProvider)
+        return JwtAuthenticationFilter(jwtTokenProvider, userDetailsService)
     }
 
     @Bean
