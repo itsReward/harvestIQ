@@ -30,6 +30,9 @@ data class User(
     @Column(name = "phone_number", length = 20)
     val phoneNumber: String? = null,
 
+    @Column(name = "role", length = 20)
+    val role: String = "FARMER",
+
     @Column(name = "last_login")
     var lastLogin: LocalDateTime? = null,
 
