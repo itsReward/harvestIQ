@@ -115,7 +115,7 @@ class EnhancedRecommendationServiceImpl(
         // Get historical average for this variety and farm
         val historicalAverage = yieldHistoryRepository.findByFarmAndMaizeVariety(
             session.farm, session.maizeVariety
-        ).map { it.yieldTonsPerHectare }.takeIf { it.isNotEmpty() }?.average()
+        ).map { it.yieldTonsPerHectare.toDouble() }.takeIf { it.isNotEmpty() }?.average()
 
         // Use variety's average yield or optimal target
         return historicalAverage ?: session.maizeVariety.averageYieldTonsPerHectare ?: OPTIMAL_YIELD_TARGET
