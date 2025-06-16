@@ -12,7 +12,6 @@ class CustomUserDetailsService(
     private val userRepository: UserRepository
 ) : UserDetailsService {
 
-    @Transactional
     override fun loadUserByUsername(username: String): UserDetails {
         val user = userRepository.findByUsername(username)
             ?: userRepository.findByEmail(username)
@@ -21,7 +20,6 @@ class CustomUserDetailsService(
         return UserPrincipal.create(user)
     }
 
-    @Transactional
     fun loadUserById(id: Long): UserDetails {
         val user = userRepository.findById(id)
             .orElseThrow { UsernameNotFoundException("User not found with id: $id") }

@@ -5,6 +5,7 @@ import com.maizeyield.security.JwtAuthenticationFilter
 import com.maizeyield.security.JwtTokenProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Lazy
 import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
@@ -39,6 +40,7 @@ class SecurityConfig(
     }
 
     @Bean
+    @Lazy
     fun jwtAuthenticationFilter(): JwtAuthenticationFilter {
         return JwtAuthenticationFilter(jwtTokenProvider, userDetailsService)
     }
