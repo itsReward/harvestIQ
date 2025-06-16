@@ -26,11 +26,11 @@ class JwtTokenProvider {
 
     fun generateToken(authentication: Authentication): String {
         val userPrincipal = authentication.principal as UserPrincipal
-
         val expiryDate = Date(Date().time + jwtExpirationInMs)
 
         return Jwts.builder()
-            .setSubject(userPrincipal.id.toString())
+            .setSubject(userPrincipal.username) // Use username instead of ID
+            .claim("userId", userPrincipal.id)   // Add user ID as custom claim
             .setIssuedAt(Date())
             .setExpiration(expiryDate)
             .signWith(key, SignatureAlgorithm.HS512)
@@ -60,5 +60,29 @@ class JwtTokenProvider {
             logger.error(ex) { "JWT claims string is empty" }
         }
         return false
+    }
+
+    /**
+     * Extract username from JWT token
+     * Note: Currently the token stores user ID in the subject, so we need to fetch the username from the user service
+     * This method assumes you have a way to get username from user ID
+     */
+    fun getUsernameFromToken(token: String): String {
+        val claims = Jwts.parserBuilder()
+            .setSigningKey(key)
+            .build()
+            .parseClaimsJws(token)
+            .body
+
+        // Since the subject contains the user ID, you might need to modify this
+        // to store username directly in the token or fetch it from the database
+        return claims.subject
+    }
+
+    /**
+     * Get the expiration time in milliseconds
+     */
+    fun getExpirationInMs(): Int {
+        return jwtExpirationInMs
     }
 }

@@ -82,7 +82,7 @@ class AuthServiceImpl(
 
         return LoginResponse(
             token = jwt,
-            expiresIn = jwtTokenProvider.getExpirationInMs(), // This should work
+            expiresIn = jwtTokenProvider.getExpirationInMs().toLong(), // This should work
             userId = user.id!!,
             username = user.username
         )
@@ -94,8 +94,10 @@ class AuthServiceImpl(
 
     override fun getUserIdFromToken(token: String): Long {
         val username = jwtTokenProvider.getUsernameFromToken(token)
-        val user = userRepository.findByUsername(username)
-            .orElseThrow { IllegalArgumentException("User not found") }
+        val user = when(val response = userRepository.findByUsername(username)){
+            null -> throw IllegalArgumentException("User not found")
+            else -> response
+        }
         return user.id!!
     }
 
