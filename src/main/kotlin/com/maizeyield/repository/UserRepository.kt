@@ -1,14 +1,18 @@
 package com.maizeyield.repository
 
+import com.maizeyield.dto.UserResponse
 import com.maizeyield.model.User
+import org.springframework.data.domain.Page
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
+import java.awt.print.Pageable
 import java.time.LocalDateTime
 
 @Repository
 interface UserRepository : JpaRepository<User, Long> {
+    fun getAllUsers(): List<User>
 
     fun findByUsername(username: String): User?
 
@@ -30,5 +34,5 @@ interface UserRepository : JpaRepository<User, Long> {
 
     // If you have roles or user types, you can add these methods:
     // fun countByRoleAndCreatedAtBetween(role: String, startDate: LocalDateTime, endDate: LocalDateTime): Long
-    // fun findByRole(role: String): List<User>
+    fun findByRole(role: String): List<User>
 }

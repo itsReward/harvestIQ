@@ -9,6 +9,9 @@ import com.maizeyield.service.PlantingSessionService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -17,15 +20,29 @@ import org.springframework.web.bind.annotation.*
 import java.time.LocalDate
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/planting-sessions")
 @Tag(name = "Planting Sessions", description = "Planting session management operations")
 class PlantingSessionController(
     private val plantingSessionService: PlantingSessionService,
     private val authService: AuthService
 ) {
 
-    @GetMapping("/farms/{farmId}/planting-sessions")
+    @GetMapping
     @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get all planting sessions")
+    fun getAllPlantingSessions(
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "10") size: Int,
+        @RequestParam(defaultValue = "") search: String
+    ): ResponseEntity<Page<PlantingSessionResponse>> {
+        val pageable: Pageable = PageRequest.of(page, size)
+        val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
+        val sessions = plantingSessionService.getAllPlantingSessions(userId, pageable, search)
+        return ResponseEntity.ok(sessions)
+    }
+
+    @GetMapping("/farms/{farmId}")
+    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
     @Operation(summary = "Get all planting sessions for a farm")
     fun getPlantingSessionsByFarmId(@PathVariable farmId: Long): ResponseEntity<List<PlantingSessionResponse>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -33,8 +50,8 @@ class PlantingSessionController(
         return ResponseEntity.ok(sessions)
     }
 
-    @GetMapping("/planting-sessions/{sessionId}")
-    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/{sessionId}")
+    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
     @Operation(summary = "Get planting session details by ID")
     fun getPlantingSessionById(@PathVariable sessionId: Long): ResponseEntity<PlantingSessionDetailResponse> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -42,21 +59,20 @@ class PlantingSessionController(
         return ResponseEntity.ok(session)
     }
 
-    @PostMapping("/farms/{farmId}/planting-sessions")
+    @PostMapping
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Create a new planting session")
     fun createPlantingSession(
-        @PathVariable farmId: Long,
         @Valid @RequestBody request: PlantingSessionCreateRequest
     ): ResponseEntity<PlantingSessionResponse> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
-        val session = plantingSessionService.createPlantingSession(userId, farmId, request)
+        val session = plantingSessionService.createPlantingSession(userId, request)
         return ResponseEntity.status(HttpStatus.CREATED).body(session)
     }
 
-    @PutMapping("/planting-sessions/{sessionId}")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Update planting session details")
+    @PutMapping("/{sessionId}")
+    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @Operation(summary = "Update planting session")
     fun updatePlantingSession(
         @PathVariable sessionId: Long,
         @Valid @RequestBody request: PlantingSessionUpdateRequest
@@ -66,45 +82,54 @@ class PlantingSessionController(
         return ResponseEntity.ok(session)
     }
 
-    @DeleteMapping("/planting-sessions/{sessionId}")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Delete a planting session")
+    @DeleteMapping("/{sessionId}")
+    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @Operation(summary = "Delete planting session")
     fun deletePlantingSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, String>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
         plantingSessionService.deletePlantingSession(userId, sessionId)
         return ResponseEntity.ok(mapOf("message" to "Planting session deleted successfully"))
     }
 
-    @GetMapping("/farms/{farmId}/planting-sessions/active")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Get active planting sessions for a farm")
-    fun getActivePlantingSessions(@PathVariable farmId: Long): ResponseEntity<List<PlantingSessionResponse>> {
+    @GetMapping("/{sessionId}/status")
+    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @Operation(summary = "Get planting session status")
+    fun getPlantingSessionStatus(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
-        val sessions = plantingSessionService.getActivePlantingSessions(userId, farmId)
+        val status = plantingSessionService.getPlantingSessionStatus(userId, sessionId)
+        return ResponseEntity.ok(status)
+    }
+
+    @PostMapping("/{sessionId}/status")
+    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @Operation(summary = "Update planting session status")
+    fun updatePlantingSessionStatus(
+        @PathVariable sessionId: Long,
+        @RequestParam status: String
+    ): ResponseEntity<Map<String, String>> {
+        val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
+        plantingSessionService.updatePlantingSessionStatus(userId, sessionId, status)
+        return ResponseEntity.ok(mapOf("message" to "Planting session status updated successfully"))
+    }
+
+    @GetMapping("/active")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get all active planting sessions")
+    fun getActivePlantingSessions(): ResponseEntity<List<PlantingSessionResponse>> {
+        val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
+        val sessions = plantingSessionService.getActivePlantingSessions(userId)
         return ResponseEntity.ok(sessions)
     }
 
-    @GetMapping("/farms/{farmId}/planting-sessions/date-range")
+    @GetMapping("/date-range")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Get planting sessions for a specific date range")
+    @Operation(summary = "Get planting sessions by date range")
     fun getPlantingSessionsByDateRange(
-        @PathVariable farmId: Long,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) startDate: LocalDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) endDate: LocalDate
     ): ResponseEntity<List<PlantingSessionResponse>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
-        val sessions = plantingSessionService.getPlantingSessionsByDateRange(userId, farmId, startDate, endDate)
+        val sessions = plantingSessionService.getPlantingSessionsByDateRange(userId, startDate, endDate)
         return ResponseEntity.ok(sessions)
-    }
-
-    @GetMapping("/maize-varieties/{maizeVarietyId}/expected-harvest")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Calculate expected harvest date based on maize variety and planting date")
-    fun calculateExpectedHarvestDate(
-        @PathVariable maizeVarietyId: Long,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) plantingDate: LocalDate
-    ): ResponseEntity<Map<String, LocalDate>> {
-        val harvestDate = plantingSessionService.calculateExpectedHarvestDate(maizeVarietyId, plantingDate)
-        return ResponseEntity.ok(mapOf("expectedHarvestDate" to harvestDate))
     }
 }

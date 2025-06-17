@@ -4,6 +4,8 @@ import com.maizeyield.dto.FarmCreateRequest
 import com.maizeyield.dto.FarmDetailResponse
 import com.maizeyield.dto.FarmResponse
 import com.maizeyield.dto.FarmUpdateRequest
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 
 interface FarmService {
     /**
@@ -40,4 +42,29 @@ interface FarmService {
      * Checks total number of farms
      */
     fun getTotalFarmCount(): Long
+
+    /**
+     * Get all farms with pagination and search
+     */
+    fun getAllFarms(userId: Long, pageable: Pageable, search: String): Page<FarmResponse>
+
+    /**
+     * Get farm statistics for a specific farm
+     */
+    fun getFarmStatistics(userId: Long, farmId: Long): Map<String, Any>
+
+    /**
+     * Transfer farm ownership
+     */
+    fun transferFarmOwnership(currentUserId: Long, farmId: Long, newOwnerId: Long): Boolean
+
+    /**
+     * Get farms by region (Admin only)
+     */
+    fun getFarmsByRegion(region: String): List<FarmResponse>
+
+    /**
+     * Get farm statistics summary (Admin only)
+     */
+    fun getFarmStatisticsSummary(): Map<String, Any>
 }

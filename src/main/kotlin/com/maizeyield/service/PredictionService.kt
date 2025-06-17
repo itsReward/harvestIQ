@@ -5,6 +5,8 @@ import com.maizeyield.dto.PredictionRequest
 import com.maizeyield.dto.PredictionResult
 import com.maizeyield.dto.YieldPredictionResponse
 import com.maizeyield.model.YieldPrediction
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import java.time.LocalDate
 
 interface PredictionService {
@@ -88,4 +90,29 @@ interface PredictionService {
      * Get recent predictions for activity feed
      */
     fun getRecentPredictions(limit: Int): List<YieldPrediction>
+
+    /**
+     * Get all predictions with pagination
+     */
+    fun getAllPredictions(userId: Long, pageable: Pageable, sessionId: Long?): Page<YieldPredictionResponse>
+
+    /**
+     * Check if user is owner of prediction
+     */
+    fun isPredictionOwner(userId: Long, predictionId: Long): Boolean
+
+    /**
+     * Delete a prediction
+     */
+    fun deletePrediction(userId: Long, predictionId: Long): Boolean
+
+    /**
+     * Get recent predictions
+     */
+    fun getRecentPredictions(userId: Long, limit: Int): List<YieldPredictionResponse>
+
+    /**
+     * Get prediction accuracy metrics (Admin only)
+     */
+    fun getPredictionAccuracyMetrics(): Map<String, Any>
 }

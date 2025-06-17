@@ -12,6 +12,10 @@ import java.time.LocalDateTime
 
 @Service
 class UserServiceImpl(private val userRepository: UserRepository) : UserService {
+    override fun getAllUsers(id: Long): List<User> {
+        val users = userRepository.getAllUsers()
+        return users
+    }
 
     override fun getUserById(id: Long): UserResponse {
         val user = userRepository.findById(id)

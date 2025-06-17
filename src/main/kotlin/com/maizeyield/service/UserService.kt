@@ -3,6 +3,8 @@ package com.maizeyield.service
 import com.maizeyield.dto.UserResponse
 import com.maizeyield.dto.UserUpdateRequest
 import com.maizeyield.model.User
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 
 interface UserService {
     /**
@@ -24,6 +26,21 @@ interface UserService {
      * Delete user account
      */
     fun deleteUser(id: Long): Boolean
+
+    /**
+     * Get all users with pagination and search (Admin only)
+     */
+    fun getAllUsers(pageable: Pageable, search: String): Page<UserResponse>
+
+    /**
+     * Get all farmers with pagination and search (Admin only)
+     */
+    fun getAllFarmers(pageable: Pageable, search: String): Page<UserResponse>
+
+    /**
+     * Update user role (Admin only)
+     */
+    fun updateUserRole(userId: Long, role: String): UserResponse
 
     // Dashboard statistics methods
     /**

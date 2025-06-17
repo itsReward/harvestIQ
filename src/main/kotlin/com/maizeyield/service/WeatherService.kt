@@ -4,6 +4,8 @@ import com.maizeyield.dto.WeatherDataCreateRequest
 import com.maizeyield.dto.WeatherDataResponse
 import com.maizeyield.dto.WeatherDataUpdateRequest
 import com.maizeyield.dto.WeatherForecastResponse
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -68,4 +70,34 @@ interface WeatherService {
      * Get last update time
      */
     fun getLastUpdateTime(): LocalDateTime?
+
+    /**
+     * Get weather data with pagination
+     */
+    fun getWeatherData(userId: Long, location: String?, startDate: LocalDate?, endDate: LocalDate?, pageable: Pageable): Page<WeatherDataResponse>
+
+    /**
+     * Check if user is owner of weather data
+     */
+    fun isWeatherDataOwner(userId: Long, weatherId: Long): Boolean
+
+    /**
+     * Create weather data record
+     */
+    fun createWeatherData(userId: Long, request: WeatherDataCreateRequest): WeatherDataResponse
+
+    /**
+     * Get weather data for farm
+     */
+    fun getWeatherDataForFarm(userId: Long, farmId: Long, startDate: LocalDate?, endDate: LocalDate?): List<WeatherDataResponse>
+
+    /**
+     * Fetch and store weather data for farm
+     */
+    fun fetchAndStoreWeatherDataForFarm(userId: Long, farmId: Long): WeatherDataResponse
+
+    /**
+     * Get weather statistics (Admin only)
+     */
+    fun getWeatherStatistics(location: String?, startDate: LocalDate?, endDate: LocalDate?): Map<String, Any>
 }

@@ -4,6 +4,8 @@ import com.maizeyield.dto.PlantingSessionCreateRequest
 import com.maizeyield.dto.PlantingSessionDetailResponse
 import com.maizeyield.dto.PlantingSessionResponse
 import com.maizeyield.dto.PlantingSessionUpdateRequest
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import java.time.LocalDate
 
 interface PlantingSessionService {
@@ -51,4 +53,35 @@ interface PlantingSessionService {
      * Check if user has permission to access the planting session
      */
     fun hasAccessToPlantingSession(userId: Long, sessionId: Long): Boolean
+
+    /**
+     * Get all planting sessions with pagination
+     */
+    fun getAllPlantingSessions(userId: Long, pageable: Pageable, search: String): Page<PlantingSessionResponse>
+
+    /**
+     * Check if user is owner of planting session
+     */
+    fun isSessionOwner(userId: Long, sessionId: Long): Boolean
+
+    /**
+     * Get planting session status
+     */
+    fun getPlantingSessionStatus(userId: Long, sessionId: Long): Map<String, Any>
+
+    /**
+     * Update planting session status
+     */
+    fun updatePlantingSessionStatus(userId: Long, sessionId: Long, status: String): Boolean
+
+    /**
+     * Get active planting sessions
+     */
+    fun getActivePlantingSessions(userId: Long): List<PlantingSessionResponse>
+
+    /**
+     * Get planting sessions by date range
+     */
+    fun getPlantingSessionsByDateRange(userId: Long, startDate: LocalDate, endDate: LocalDate): List<PlantingSessionResponse>
+
 }
