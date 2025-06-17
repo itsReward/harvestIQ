@@ -7,6 +7,8 @@ import com.maizeyield.model.PlantingSession
 import com.maizeyield.repository.*
 import com.maizeyield.service.FarmService
 import com.maizeyield.service.PlantingSessionService
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -236,6 +238,45 @@ class PlantingSessionServiceImpl(
             .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
 
         return farmService.isFarmOwner(userId, session.farm.id!!)
+    }
+
+    override fun getAllPlantingSessions(
+        userId: Long,
+        pageable: Pageable,
+        search: String
+    ): Page<PlantingSessionResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun isSessionOwner(userId: Long, sessionId: Long): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override fun getPlantingSessionStatus(
+        userId: Long,
+        sessionId: Long
+    ): Map<String, Any> {
+        TODO("Not yet implemented")
+    }
+
+    override fun updatePlantingSessionStatus(
+        userId: Long,
+        sessionId: Long,
+        status: String
+    ): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override fun getActivePlantingSessions(userId: Long): List<PlantingSessionResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getPlantingSessionsByDateRange(
+        userId: Long,
+        startDate: LocalDate,
+        endDate: LocalDate
+    ): List<PlantingSessionResponse> {
+        TODO("Not yet implemented")
     }
 
     // Helper method to map PlantingSession entity to PlantingSessionResponse DTO

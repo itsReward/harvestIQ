@@ -5,6 +5,8 @@ import com.maizeyield.dto.UserUpdateRequest
 import com.maizeyield.model.User
 import com.maizeyield.repository.UserRepository
 import com.maizeyield.service.UserService
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -12,10 +14,6 @@ import java.time.LocalDateTime
 
 @Service
 class UserServiceImpl(private val userRepository: UserRepository) : UserService {
-    override fun getAllUsers(id: Long): List<User> {
-        val users = userRepository.getAllUsers()
-        return users
-    }
 
     override fun getUserById(id: Long): UserResponse {
         val user = userRepository.findById(id)
@@ -90,6 +88,24 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
 
         userRepository.deleteById(id)
         return true
+    }
+
+    override fun getAllUsers(
+        pageable: Pageable,
+        search: String
+    ): Page<UserResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getAllFarmers(
+        pageable: Pageable,
+        search: String
+    ): Page<UserResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun updateUserRole(userId: Long, role: String): UserResponse {
+        TODO("Not yet implemented")
     }
 
     // Dashboard statistics methods

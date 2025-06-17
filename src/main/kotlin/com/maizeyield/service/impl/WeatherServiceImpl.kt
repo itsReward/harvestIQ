@@ -19,6 +19,8 @@ import com.maizeyield.service.external.WeatherApiService
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.cache.annotation.Cacheable
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.retry.annotation.Backoff
 import org.springframework.retry.annotation.Retryable
 import org.springframework.stereotype.Service
@@ -576,5 +578,50 @@ class WeatherServiceImpl(
         } catch (e: Exception) {
             null
         }
+    }
+
+    override fun getWeatherData(
+        userId: Long,
+        location: String?,
+        startDate: LocalDate?,
+        endDate: LocalDate?,
+        pageable: Pageable
+    ): Page<WeatherDataResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun isWeatherDataOwner(userId: Long, weatherId: Long): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override fun createWeatherData(
+        userId: Long,
+        request: WeatherDataCreateRequest
+    ): WeatherDataResponse {
+        TODO("Not yet implemented")
+    }
+
+    override fun getWeatherDataForFarm(
+        userId: Long,
+        farmId: Long,
+        startDate: LocalDate?,
+        endDate: LocalDate?
+    ): List<WeatherDataResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun fetchAndStoreWeatherDataForFarm(
+        userId: Long,
+        farmId: Long
+    ): WeatherDataResponse {
+        TODO("Not yet implemented")
+    }
+
+    override fun getWeatherStatistics(
+        location: String?,
+        startDate: LocalDate?,
+        endDate: LocalDate?
+    ): Map<String, Any> {
+        TODO("Not yet implemented")
     }
 }

@@ -15,6 +15,8 @@ import com.maizeyield.service.PlantingSessionService
 import com.maizeyield.service.PredictionService
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -541,5 +543,32 @@ class PredictionServiceImpl(
         }
     }
 
-    
+    override fun getAllPredictions(
+        userId: Long,
+        pageable: Pageable,
+        sessionId: Long?
+    ): Page<YieldPredictionResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun isPredictionOwner(userId: Long, predictionId: Long): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override fun deletePrediction(userId: Long, predictionId: Long): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override fun getRecentPredictions(
+        userId: Long,
+        limit: Int
+    ): List<YieldPredictionResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getPredictionAccuracyMetrics(): Map<String, Any> {
+        TODO("Not yet implemented")
+    }
+
+
 }

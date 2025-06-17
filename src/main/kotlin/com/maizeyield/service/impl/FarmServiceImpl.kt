@@ -9,6 +9,8 @@ import com.maizeyield.repository.PlantingSessionRepository
 import com.maizeyield.repository.SoilDataRepository
 import com.maizeyield.repository.UserRepository
 import com.maizeyield.service.FarmService
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -193,6 +195,37 @@ class FarmServiceImpl(
 
     override fun getTotalFarmCount(): Long {
         return farmRepository.count()
+    }
+
+    override fun getAllFarms(
+        userId: Long,
+        pageable: Pageable,
+        search: String
+    ): Page<FarmResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getFarmStatistics(
+        userId: Long,
+        farmId: Long
+    ): Map<String, Any> {
+        TODO("Not yet implemented")
+    }
+
+    override fun transferFarmOwnership(
+        currentUserId: Long,
+        farmId: Long,
+        newOwnerId: Long
+    ): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override fun getFarmsByRegion(region: String): List<FarmResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getFarmStatisticsSummary(): Map<String, Any> {
+        TODO("Not yet implemented")
     }
 
 }
