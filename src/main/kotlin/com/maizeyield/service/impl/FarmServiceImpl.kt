@@ -190,4 +190,9 @@ class FarmServiceImpl(
 
         return farm.user.id == userId
     }
+
+    override fun getTotalFarmCount(): Long {
+        return farmRepository.count()
+    }
+
 }

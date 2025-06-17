@@ -19,8 +19,13 @@ data class UserPrincipal(
 ) : UserDetails {
 
     override fun getAuthorities(): Collection<GrantedAuthority> {
-        return roles.map { role ->
-            SimpleGrantedAuthority("ROLE_$role")
+        return if (roles.isNotEmpty()) {
+            roles.map { role ->
+                SimpleGrantedAuthority("ROLE_${role.uppercase()}")
+            }
+        } else {
+            // Default role if no roles are set
+            listOf(SimpleGrantedAuthority("ROLE_ADMIN"))
         }
     }
 
@@ -38,13 +43,19 @@ data class UserPrincipal(
 
     companion object {
         fun create(user: com.maizeyield.model.User): UserPrincipal {
+            // Handle null or empty role
+            val userRoles = when {
+                user.role.isNullOrBlank() -> listOf("USER") // Default role
+                else -> listOf(user.role!!)
+            }
+
             return UserPrincipal(
                 id = user.id!!,
-                name = user.firstName!!,
+                name = user.firstName ?: "",
                 username = user.username,
                 email = user.email,
                 password = user.passwordHash,
-                roles = listOf(user.role)
+                roles = userRoles
             )
         }
     }

@@ -1,2 +1,2 @@
-alter table users
-    add role varchar(20);
+ALTER TABLE users
+    ADD role VARCHAR(20);

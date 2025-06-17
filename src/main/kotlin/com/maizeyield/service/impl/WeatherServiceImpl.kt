@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 private val logger = KotlinLogging.logger {}
 
@@ -567,5 +568,13 @@ class WeatherServiceImpl(
             solarRadiation = weatherData.solarRadiation,
             source = weatherData.source
         )
+    }
+
+    override fun getLastUpdateTime(): LocalDateTime? {
+        return try {
+            weatherDataRepository.findTopByOrderByCreatedAtDesc()?.createdAt
+        } catch (e: Exception) {
+            null
+        }
     }
 }

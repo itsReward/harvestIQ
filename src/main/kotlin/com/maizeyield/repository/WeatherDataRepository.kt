@@ -82,4 +82,7 @@ interface WeatherDataRepository : JpaRepository<WeatherData, Long> {
 
     @Query("SELECT w FROM WeatherData w WHERE w.farm = :farm AND w.rainfallMm > 0 AND w.date BETWEEN :startDate AND :endDate ORDER BY w.date")
     fun findWetDaysInRange(farm: Farm, startDate: LocalDate, endDate: LocalDate): List<WeatherData>
+
+    @Query("SELECT wd FROM WeatherData wd ORDER BY wd.createdAt DESC LIMIT 1")
+    fun findTopByOrderByCreatedAtDesc(): WeatherData?
 }

@@ -4,6 +4,7 @@ import com.maizeyield.dto.FactorImportance
 import com.maizeyield.dto.PredictionRequest
 import com.maizeyield.dto.PredictionResult
 import com.maizeyield.dto.YieldPredictionResponse
+import com.maizeyield.model.YieldPrediction
 import java.time.LocalDate
 
 interface PredictionService {
@@ -51,4 +52,40 @@ interface PredictionService {
      * Get prediction history for a planting session
      */
     fun getPredictionHistory(userId: Long, plantingSessionId: Long, startDate: LocalDate, endDate: LocalDate): List<YieldPredictionResponse>
+
+    // Dashboard statistics methods
+    /**
+     * Get total count of all predictions
+     */
+    fun getTotalPredictionCount(): Long
+
+    /**
+     * Get count of active planting sessions (last 30 days)
+     */
+    fun getActiveSessionCount(): Long
+
+    /**
+     * Get average yield from recent predictions
+     */
+    fun getAverageYield(): Double
+
+    /**
+     * Get session growth percentage compared to previous month
+     */
+    fun getSessionGrowthPercentage(): Double
+
+    /**
+     * Get prediction growth percentage compared to previous month
+     */
+    fun getPredictionGrowthPercentage(): Double
+
+    /**
+     * Get yield growth percentage compared to previous month
+     */
+    fun getYieldGrowthPercentage(): Double
+
+    /**
+     * Get recent predictions for activity feed
+     */
+    fun getRecentPredictions(limit: Int): List<YieldPrediction>
 }

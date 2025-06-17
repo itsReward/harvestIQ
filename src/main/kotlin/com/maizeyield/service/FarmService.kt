@@ -35,4 +35,9 @@ interface FarmService {
      * Check if user owns the farm
      */
     fun isFarmOwner(userId: Long, farmId: Long): Boolean
+
+    /**
+     * Checks total number of farms
+     */
+    fun getTotalFarmCount(): Long
 }

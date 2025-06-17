@@ -6,6 +6,7 @@ import com.maizeyield.dto.WeatherDataUpdateRequest
 import com.maizeyield.dto.WeatherForecastResponse
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 interface WeatherService {
     /**
@@ -62,4 +63,9 @@ interface WeatherService {
      * Calculate average temperature for a specific date range
      */
     fun calculateAverageTemperature(userId: Long, farmId: Long, startDate: LocalDate, endDate: LocalDate): BigDecimal?
+
+    /**
+     * Get last update time
+     */
+    fun getLastUpdateTime(): LocalDateTime?
 }

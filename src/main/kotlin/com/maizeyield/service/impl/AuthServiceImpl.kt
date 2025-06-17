@@ -93,12 +93,8 @@ class AuthServiceImpl(
     }
 
     override fun getUserIdFromToken(token: String): Long {
-        val username = jwtTokenProvider.getUsernameFromToken(token)
-        val user = when(val response = userRepository.findByUsername(username)){
-            null -> throw IllegalArgumentException("User not found")
-            else -> response
-        }
-        return user.id!!
+        // Fix: Use the correct method to get user ID from token
+        return jwtTokenProvider.getUserIdFromToken(token)
     }
 
     @Transactional

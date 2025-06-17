@@ -29,8 +29,9 @@ class JwtTokenProvider {
         val expiryDate = Date(Date().time + jwtExpirationInMs)
 
         return Jwts.builder()
-            .setSubject(userPrincipal.username) // Use username instead of ID
-            .claim("userId", userPrincipal.id)   // Add user ID as custom claim
+            .setSubject(userPrincipal.id.toString()) // Store user ID as subject
+            .claim("username", userPrincipal.username) // Store username as custom claim
+            .claim("email", userPrincipal.email) // Store email as custom claim
             .setIssuedAt(Date())
             .setExpiration(expiryDate)
             .signWith(key, SignatureAlgorithm.HS512)
@@ -44,6 +45,7 @@ class JwtTokenProvider {
             .parseClaimsJws(token)
             .body
 
+        // Now we can safely parse the subject as Long because it contains the user ID
         return claims.subject.toLong()
     }
 
@@ -64,8 +66,6 @@ class JwtTokenProvider {
 
     /**
      * Extract username from JWT token
-     * Note: Currently the token stores user ID in the subject, so we need to fetch the username from the user service
-     * This method assumes you have a way to get username from user ID
      */
     fun getUsernameFromToken(token: String): String {
         val claims = Jwts.parserBuilder()
@@ -74,9 +74,22 @@ class JwtTokenProvider {
             .parseClaimsJws(token)
             .body
 
-        // Since the subject contains the user ID, you might need to modify this
-        // to store username directly in the token or fetch it from the database
-        return claims.subject
+        // Get username from custom claim
+        return claims.get("username", String::class.java)
+    }
+
+    /**
+     * Extract email from JWT token
+     */
+    fun getEmailFromToken(token: String): String {
+        val claims = Jwts.parserBuilder()
+            .setSigningKey(key)
+            .build()
+            .parseClaimsJws(token)
+            .body
+
+        // Get email from custom claim
+        return claims.get("email", String::class.java)
     }
 
     /**
