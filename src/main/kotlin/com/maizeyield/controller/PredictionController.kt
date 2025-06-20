@@ -31,7 +31,7 @@ class PredictionController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") size: Int,
         @RequestParam(required = false) sessionId: Long?
-    ): ResponseEntity<Page<YieldPredictionResponse>> {
+    ): ResponseEntity<Iterable<YieldPredictionResponse>> {
         val pageable: Pageable = PageRequest.of(page, size)
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
         val predictions = predictionService.getAllPredictions(userId, pageable, sessionId)

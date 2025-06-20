@@ -20,6 +20,7 @@ import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.retry.annotation.Backoff
 import org.springframework.retry.annotation.Retryable
@@ -29,6 +30,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlin.math.pow
 
 private val logger = KotlinLogging.logger {}
 
@@ -587,18 +589,138 @@ class WeatherServiceImpl(
         endDate: LocalDate?,
         pageable: Pageable
     ): Page<WeatherDataResponse> {
-        TODO("Not yet implemented")
+        logger.info { "Getting weather data for user $userId with filters - location: $location, startDate: $startDate, endDate: $endDate" }
+
+        return try {
+            // Get all farms for the user
+            val userFarms = farmRepository.findByUserId(userId)
+
+            if (userFarms.isEmpty()) {
+                return PageImpl(emptyList(), pageable, 0)
+            }
+
+            // Filter farms by location if specified
+            val filteredFarms = if (location != null) {
+                userFarms.filter { farm ->
+                    farm.location.contains(location, ignoreCase = true)
+                }
+            } else {
+                userFarms
+            }
+
+            if (filteredFarms.isEmpty()) {
+                return PageImpl(emptyList(), pageable, 0)
+            }
+
+            // Collect weather data from all filtered farms
+            val allWeatherData = mutableListOf<WeatherData>()
+
+            filteredFarms.forEach { farm ->
+                val weatherData = if (startDate != null && endDate != null) {
+                    weatherDataRepository.findByFarmAndDateBetween(farm, startDate, endDate)
+                } else {
+                    weatherDataRepository.findByFarm(farm)
+                }
+                allWeatherData.addAll(weatherData)
+            }
+
+            // Sort by date (newest first) and farm ID for consistency
+            val sortedWeatherData = allWeatherData.sortedWith(
+                compareByDescending<WeatherData> { it.date }
+                    .thenBy { it.farm.id }
+            )
+
+            // Apply pagination manually
+            val totalElements = sortedWeatherData.size
+            val startIndex = pageable.offset.toInt()
+            val endIndex = minOf(startIndex + pageable.pageSize, totalElements)
+
+            val pageContent = if (startIndex >= totalElements) {
+                emptyList()
+            } else {
+                sortedWeatherData.subList(startIndex, endIndex).map { weatherData ->
+                    mapToWeatherDataResponse(weatherData)
+                }
+            }
+
+            PageImpl(pageContent, pageable, totalElements.toLong())
+
+        } catch (e: Exception) {
+            logger.error(e) { "Error getting weather data: ${e.message}" }
+            PageImpl(emptyList(), pageable, 0)
+        }
     }
 
     override fun isWeatherDataOwner(userId: Long, weatherId: Long): Boolean {
-        TODO("Not yet implemented")
+        logger.debug { "Checking if user $userId owns weather data $weatherId" }
+
+        return try {
+            val weatherData = weatherDataRepository.findById(weatherId)
+                .orElse(null) ?: return false
+
+            // Check if user owns the farm that contains this weather data
+            farmService.isFarmOwner(userId, weatherData.farm.id!!)
+        } catch (e: Exception) {
+            logger.error(e) { "Error checking weather data ownership: ${e.message}" }
+            false
+        }
     }
 
+    @Transactional
     override fun createWeatherData(
         userId: Long,
         request: WeatherDataCreateRequest
     ): WeatherDataResponse {
-        TODO("Not yet implemented")
+        logger.info { "Creating weather data for user $userId, farm ${request.farmId}" }
+
+        // Validate farm ownership
+        if (!farmService.isFarmOwner(userId, request.farmId)) {
+            throw UnauthorizedAccessException("You don't have permission to add weather data to this farm")
+        }
+
+        val farm = farmRepository.findById(request.farmId)
+            .orElseThrow { ResourceNotFoundException("Farm not found with ID: ${request.farmId}") }
+
+        return try {
+            // Check if weather data already exists for this farm and date
+            val existingData = weatherDataRepository.findByFarmAndDate(farm, request.date)
+            if (existingData.isPresent) {
+                logger.warn { "Weather data already exists for farm ${request.farmId} on ${request.date}" }
+                throw IllegalArgumentException("Weather data already exists for this farm on ${request.date}")
+            }
+
+            // Validate weather data values
+            validateWeatherDataRequest(request)
+
+            val weatherData = WeatherData(
+                farm = farm,
+                date = request.date,
+                minTemperature = request.minTemperature,
+                maxTemperature = request.maxTemperature,
+                averageTemperature = request.averageTemperature ?: calculateAverageTemperature(
+                    request.minTemperature,
+                    request.maxTemperature
+                ),
+                rainfallMm = request.rainfallMm,
+                humidityPercentage = request.humidityPercentage,
+                windSpeedKmh = request.windSpeedKmh,
+                solarRadiation = request.solarRadiation,
+                source = request.source,
+                createdAt = LocalDateTime.now()
+            )
+
+            val savedWeatherData = weatherDataRepository.save(weatherData)
+            logger.info { "Successfully created weather data with ID ${savedWeatherData.id}" }
+
+            mapToWeatherDataResponse(savedWeatherData)
+
+        } catch (e: Exception) {
+            logger.error(e) { "Error creating weather data: ${e.message}" }
+            when (e) {
+                is IllegalArgumentException, is UnauthorizedAccessException, is ResourceNotFoundException -> throw e
+                else -> throw RuntimeException("Failed to create weather data: ${e.message}")
+            }
+        }
     }
 
     override fun getWeatherDataForFarm(
@@ -607,21 +729,501 @@ class WeatherServiceImpl(
         startDate: LocalDate?,
         endDate: LocalDate?
     ): List<WeatherDataResponse> {
-        TODO("Not yet implemented")
+        logger.info { "Getting weather data for farm $farmId, user $userId" }
+
+        if (!farmService.isFarmOwner(userId, farmId)) {
+            throw UnauthorizedAccessException("You don't have permission to access weather data for this farm")
+        }
+
+        val farm = farmRepository.findById(farmId)
+            .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+        return try {
+            val weatherData = if (startDate != null && endDate != null) {
+                // Validate date range
+                if (startDate.isAfter(endDate)) {
+                    throw IllegalArgumentException("Start date cannot be after end date")
+                }
+
+                weatherDataRepository.findByFarmAndDateBetween(farm, startDate, endDate)
+            } else {
+                weatherDataRepository.findByFarm(farm)
+            }
+
+            weatherData.map { mapToWeatherDataResponse(it) }
+                .sortedByDescending { it.date }
+
+        } catch (e: Exception) {
+            logger.error(e) { "Error getting weather data for farm: ${e.message}" }
+            when (e) {
+                is IllegalArgumentException, is UnauthorizedAccessException, is ResourceNotFoundException -> throw e
+                else -> throw RuntimeException("Failed to get weather data for farm: ${e.message}")
+            }
+        }
     }
 
+    @Transactional
     override fun fetchAndStoreWeatherDataForFarm(
         userId: Long,
         farmId: Long
     ): WeatherDataResponse {
-        TODO("Not yet implemented")
+        logger.info { "Fetching and storing weather data for farm $farmId, user $userId" }
+
+        if (!farmService.isFarmOwner(userId, farmId)) {
+            throw UnauthorizedAccessException("You don't have permission to fetch weather data for this farm")
+        }
+
+        val farm = farmRepository.findById(farmId)
+            .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+        return try {
+            // Check if farm has valid coordinates
+            if (farm.latitude == null || farm.longitude == null) {
+                throw IllegalArgumentException("Farm coordinates are required to fetch weather data")
+            }
+
+            // Fetch current weather data from external API
+            val currentWeatherData = fetchCurrentWeatherFromAPI(farm)
+
+            // Check if weather data already exists for today
+            val today = LocalDate.now()
+            val existingData = weatherDataRepository.findByFarmAndDate(farm, today)
+
+            if (existingData.isPresent) {
+                // Update existing data
+                val existing = existingData.get()
+                val updatedData = existing.copy(
+                    minTemperature = currentWeatherData.minTemperature,
+                    maxTemperature = currentWeatherData.maxTemperature,
+                    averageTemperature = currentWeatherData.averageTemperature,
+                    rainfallMm = currentWeatherData.rainfallMm,
+                    humidityPercentage = currentWeatherData.humidityPercentage,
+                    windSpeedKmh = currentWeatherData.windSpeedKmh,
+                    solarRadiation = currentWeatherData.solarRadiation,
+                    source = "External API (Updated)",
+                    updatedAt = LocalDateTime.now()
+                )
+
+                val savedData = weatherDataRepository.save(updatedData)
+                logger.info { "Updated existing weather data for farm $farmId" }
+                return mapToWeatherDataResponse(savedData)
+            } else {
+                // Create new weather data entry
+                val weatherData = WeatherData(
+                    farm = farm,
+                    date = today,
+                    minTemperature = currentWeatherData.minTemperature,
+                    maxTemperature = currentWeatherData.maxTemperature,
+                    averageTemperature = currentWeatherData.averageTemperature,
+                    rainfallMm = currentWeatherData.rainfallMm,
+                    humidityPercentage = currentWeatherData.humidityPercentage,
+                    windSpeedKmh = currentWeatherData.windSpeedKmh,
+                    solarRadiation = currentWeatherData.solarRadiation,
+                    source = "External API",
+                    createdAt = LocalDateTime.now()
+                )
+
+                val savedData = weatherDataRepository.save(weatherData)
+                logger.info { "Created new weather data entry for farm $farmId" }
+                return mapToWeatherDataResponse(savedData)
+            }
+
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching and storing weather data: ${e.message}" }
+            when (e) {
+                is IllegalArgumentException, is UnauthorizedAccessException, is ResourceNotFoundException -> throw e
+                else -> throw RuntimeException("Failed to fetch and store weather data: ${e.message}")
+            }
+        }
     }
+
 
     override fun getWeatherStatistics(
         location: String?,
         startDate: LocalDate?,
         endDate: LocalDate?
     ): Map<String, Any> {
-        TODO("Not yet implemented")
+        logger.info { "Calculating weather statistics for location: $location, dateRange: $startDate to $endDate" }
+
+        return try {
+            // Get all farms or filter by location
+            val farms = if (location != null) {
+                farmRepository.findAll().filter { farm ->
+                    farm.location.contains(location, ignoreCase = true)
+                }
+            } else {
+                farmRepository.findAll()
+            }
+
+            if (farms.isEmpty()) {
+                return mapOf(
+                    "message" to "No farms found for the specified location",
+                    "totalFarms" to 0,
+                    "totalRecords" to 0,
+                    "location" to (location ?: "All locations")
+                )
+            }
+
+            // Collect weather data from all farms
+            val allWeatherData = mutableListOf<WeatherData>()
+            farms.forEach { farm ->
+                val weatherData = if (startDate != null && endDate != null) {
+                    weatherDataRepository.findByFarmAndDateBetween(farm, startDate, endDate)
+                } else {
+                    weatherDataRepository.findByFarm(farm)
+                }
+                allWeatherData.addAll(weatherData)
+            }
+
+            if (allWeatherData.isEmpty()) {
+                return mapOf(
+                    "message" to "No weather data found for the specified criteria",
+                    "totalFarms" to farms.size,
+                    "totalRecords" to 0,
+                    "location" to (location ?: "All locations"),
+                    "dateRange" to mapOf(
+                        "startDate" to startDate,
+                        "endDate" to endDate
+                    )
+                )
+            }
+
+            // Calculate comprehensive statistics
+            val temperatures = allWeatherData.mapNotNull { it.averageTemperature?.toDouble() }
+            val minTemps = allWeatherData.mapNotNull { it.minTemperature?.toDouble() }
+            val maxTemps = allWeatherData.mapNotNull { it.maxTemperature?.toDouble() }
+            val rainfall = allWeatherData.mapNotNull { it.rainfallMm?.toDouble() }
+            val humidity = allWeatherData.mapNotNull { it.humidityPercentage?.toDouble() }
+            val windSpeed = allWeatherData.mapNotNull { it.windSpeedKmh?.toDouble() }
+
+            // Temperature statistics
+            val temperatureStats = if (temperatures.isNotEmpty()) {
+                mapOf(
+                    "average" to BigDecimal(temperatures.average()).setScale(2, RoundingMode.HALF_UP),
+                    "minimum" to BigDecimal(temperatures.minOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP),
+                    "maximum" to BigDecimal(temperatures.maxOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP),
+                    "standardDeviation" to BigDecimal(calculateStandardDeviation(temperatures)).setScale(2, RoundingMode.HALF_UP)
+                )
+            } else {
+                mapOf("message" to "No temperature data available")
+            }
+
+            // Rainfall statistics
+            val rainfallStats = if (rainfall.isNotEmpty()) {
+                mapOf(
+                    "total" to BigDecimal(rainfall.sum()).setScale(2, RoundingMode.HALF_UP),
+                    "average" to BigDecimal(rainfall.average()).setScale(2, RoundingMode.HALF_UP),
+                    "maximum" to BigDecimal(rainfall.maxOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP),
+                    "daysWithRain" to rainfall.count { it > 0 },
+                    "daysWithoutRain" to rainfall.count { it == 0.0 }
+                )
+            } else {
+                mapOf("message" to "No rainfall data available")
+            }
+
+            // Humidity statistics
+            val humidityStats = if (humidity.isNotEmpty()) {
+                mapOf(
+                    "average" to BigDecimal(humidity.average()).setScale(2, RoundingMode.HALF_UP),
+                    "minimum" to BigDecimal(humidity.minOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP),
+                    "maximum" to BigDecimal(humidity.maxOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP)
+                )
+            } else {
+                mapOf("message" to "No humidity data available")
+            }
+
+            // Wind statistics
+            val windStats = if (windSpeed.isNotEmpty()) {
+                mapOf(
+                    "average" to BigDecimal(windSpeed.average()).setScale(2, RoundingMode.HALF_UP),
+                    "maximum" to BigDecimal(windSpeed.maxOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP),
+                    "minimum" to BigDecimal(windSpeed.minOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP)
+                )
+            } else {
+                mapOf("message" to "No wind speed data available")
+            }
+
+            // Data quality assessment
+            val dataQuality = calculateWeatherDataQuality(allWeatherData)
+
+            // Extreme weather events
+            val extremeEvents = identifyExtremeWeatherEvents(allWeatherData)
+
+            // Monthly trends (if date range spans multiple months)
+            val monthlyTrends = calculateMonthlyWeatherTrends(allWeatherData)
+
+            mapOf(
+                "totalFarms" to farms.size,
+                "totalRecords" to allWeatherData.size,
+                "location" to (location ?: "All locations"),
+                "dateRange" to mapOf(
+                    "startDate" to (startDate ?: allWeatherData.minOfOrNull { it.date }),
+                    "endDate" to (endDate ?: allWeatherData.maxOfOrNull { it.date })
+                ),
+                "temperature" to temperatureStats,
+                "rainfall" to rainfallStats,
+                "humidity" to humidityStats,
+                "windSpeed" to windStats,
+                "dataQuality" to dataQuality,
+                "extremeEvents" to extremeEvents,
+                "monthlyTrends" to monthlyTrends,
+                "calculatedAt" to LocalDateTime.now()
+            )
+
+        } catch (e: Exception) {
+            logger.error(e) { "Error calculating weather statistics: ${e.message}" }
+            mapOf(
+                "error" to true,
+                "message" to (e.message ?: "Unknown error occurred"),
+                "calculatedAt" to LocalDateTime.now()
+            )
+        }
+    }
+
+// Helper methods
+
+    private fun validateWeatherDataRequest(request: WeatherDataCreateRequest) {
+        // Temperature validation
+        if (request.minTemperature != null && request.maxTemperature != null) {
+            if (request.minTemperature > request.maxTemperature) {
+                throw IllegalArgumentException("Minimum temperature cannot be greater than maximum temperature")
+            }
+        }
+
+        // Validate temperature ranges (reasonable for agricultural contexts)
+        request.minTemperature?.let { temp ->
+            if (temp.toDouble() < -50.0 || temp.toDouble() > 60.0) {
+                throw IllegalArgumentException("Minimum temperature must be between -50°C and 60°C")
+            }
+        }
+
+        request.maxTemperature?.let { temp ->
+            if (temp.toDouble() < -50.0 || temp.toDouble() > 60.0) {
+                throw IllegalArgumentException("Maximum temperature must be between -50°C and 60°C")
+            }
+        }
+
+        // Validate other parameters
+        request.humidityPercentage?.let { humidity ->
+            if (humidity.toDouble() < 0.0 || humidity.toDouble() > 100.0) {
+                throw IllegalArgumentException("Humidity percentage must be between 0% and 100%")
+            }
+        }
+
+        request.rainfallMm?.let { rainfall ->
+            if (rainfall.toDouble() < 0.0) {
+                throw IllegalArgumentException("Rainfall cannot be negative")
+            }
+        }
+
+        request.windSpeedKmh?.let { windSpeed ->
+            if (windSpeed.toDouble() < 0.0) {
+                throw IllegalArgumentException("Wind speed cannot be negative")
+            }
+        }
+    }
+
+    private fun calculateAverageTemperature(minTemp: BigDecimal?, maxTemp: BigDecimal?): BigDecimal? {
+        return if (minTemp != null && maxTemp != null) {
+            (minTemp + maxTemp).divide(BigDecimal("2"), 2, RoundingMode.HALF_UP)
+        } else null
+    }
+
+    private fun fetchCurrentWeatherFromAPI(farm: Farm): WeatherDataResponse {
+        // This is a simplified mock implementation
+        // In a real implementation, you would call actual weather APIs like OpenWeatherMap, WeatherAPI, etc.
+
+        logger.info { "Fetching weather data from external API for farm ${farm.id} at coordinates (${farm.latitude}, ${farm.longitude})" }
+
+        // Mock current weather data - replace with actual API calls
+        val currentTemp = 20.0 + (Math.random() * 15.0) // 20-35°C
+        val humidity = 40.0 + (Math.random() * 40.0) // 40-80%
+        val rainfall = if (Math.random() > 0.7) Math.random() * 10.0 else 0.0 // 30% chance of rain
+
+        return WeatherDataResponse(
+            farmId = farm.id!!,
+            date = LocalDate.now(),
+            minTemperature = BigDecimal(currentTemp - 5.0).setScale(2, RoundingMode.HALF_UP),
+            maxTemperature = BigDecimal(currentTemp + 5.0).setScale(2, RoundingMode.HALF_UP),
+            averageTemperature = BigDecimal(currentTemp).setScale(2, RoundingMode.HALF_UP),
+            rainfallMm = BigDecimal(rainfall).setScale(2, RoundingMode.HALF_UP),
+            humidityPercentage = BigDecimal(humidity).setScale(2, RoundingMode.HALF_UP),
+            windSpeedKmh = BigDecimal(5.0 + Math.random() * 15.0).setScale(2, RoundingMode.HALF_UP),
+            solarRadiation = BigDecimal(15.0 + Math.random() * 10.0).setScale(2, RoundingMode.HALF_UP),
+            source = "External Weather API",
+            pressure = BigDecimal(1000.0 + Math.random() * 50.0).setScale(2, RoundingMode.HALF_UP),
+            uvIndex = BigDecimal(Math.random() * 11.0).setScale(1, RoundingMode.HALF_UP),
+            visibility = BigDecimal(8.0 + Math.random() * 7.0).setScale(2, RoundingMode.HALF_UP),
+            cloudCover = BigDecimal(Math.random() * 100.0).setScale(2, RoundingMode.HALF_UP)
+        )
+    }
+
+    private fun calculateStandardDeviation(values: List<Double>): Double {
+        if (values.size < 2) return 0.0
+
+        val mean = values.average()
+        val variance = values.map { (it - mean).pow(2) }.average()
+        return kotlin.math.sqrt(variance)
+    }
+
+    private fun calculateWeatherDataQuality(weatherData: List<WeatherData>): Map<String, Any> {
+        if (weatherData.isEmpty()) {
+            return mapOf("score" to 0, "message" to "No data available")
+        }
+
+        var qualityScore = 100.0
+        val issues = mutableListOf<String>()
+
+        // Check completeness of key fields
+        val temperatureCompleteness = weatherData.count { it.averageTemperature != null }.toDouble() / weatherData.size
+        val rainfallCompleteness = weatherData.count { it.rainfallMm != null }.toDouble() / weatherData.size
+        val humidityCompleteness = weatherData.count { it.humidityPercentage != null }.toDouble() / weatherData.size
+
+        qualityScore *= (temperatureCompleteness + rainfallCompleteness + humidityCompleteness) / 3.0
+
+        if (temperatureCompleteness < 0.9) issues.add("Missing temperature data")
+        if (rainfallCompleteness < 0.9) issues.add("Missing rainfall data")
+        if (humidityCompleteness < 0.9) issues.add("Missing humidity data")
+
+        // Check for data recency
+        val latestDate = weatherData.maxOfOrNull { it.date }
+        val daysSinceLastUpdate = latestDate?.let { LocalDate.now().toEpochDay() - it.toEpochDay() } ?: Long.MAX_VALUE
+
+        if (daysSinceLastUpdate > 7) {
+            qualityScore *= 0.8
+            issues.add("Data is not recent (older than 7 days)")
+        }
+
+        // Check for outliers
+        val temperatures = weatherData.mapNotNull { it.averageTemperature?.toDouble() }
+        if (temperatures.isNotEmpty()) {
+            val tempMean = temperatures.average()
+            val tempStdDev = calculateStandardDeviation(temperatures)
+            val outliers = temperatures.count { kotlin.math.abs(it - tempMean) > 3 * tempStdDev }
+
+            if (outliers > temperatures.size * 0.05) { // More than 5% outliers
+                qualityScore *= 0.9
+                issues.add("Temperature data contains significant outliers")
+            }
+        }
+
+        return mapOf(
+            "score" to BigDecimal(qualityScore).setScale(1, RoundingMode.HALF_UP),
+            "completeness" to mapOf(
+                "temperature" to BigDecimal(temperatureCompleteness * 100).setScale(1, RoundingMode.HALF_UP),
+                "rainfall" to BigDecimal(rainfallCompleteness * 100).setScale(1, RoundingMode.HALF_UP),
+                "humidity" to BigDecimal(humidityCompleteness * 100).setScale(1, RoundingMode.HALF_UP)
+            ),
+            "recency" to mapOf(
+                "latestDate" to latestDate,
+                "daysSinceLastUpdate" to daysSinceLastUpdate
+            ),
+            "issues" to issues
+        )
+    }
+
+    private fun identifyExtremeWeatherEvents(weatherData: List<WeatherData>): List<Map<String, Any>> {
+        val extremeEvents = mutableListOf<Map<String, Any>>()
+
+        weatherData.forEach { data ->
+            // High temperature events
+            data.maxTemperature?.let { maxTemp ->
+                if (maxTemp.toDouble() > 35.0) {
+                    extremeEvents.add(
+                        mapOf(
+                            "date" to data.date,
+                            "type" to "HIGH_TEMPERATURE",
+                            "value" to maxTemp,
+                            "unit" to "°C",
+                            "severity" to when {
+                                maxTemp.toDouble() > 40.0 -> "SEVERE"
+                                maxTemp.toDouble() > 37.0 -> "MODERATE"
+                                else -> "MILD"
+                            },
+                            "farmId" to data.farm.id
+                        ) as Map<String, Any>
+                    )
+                }
+            }
+
+            // Heavy rainfall events
+            data.rainfallMm?.let { rainfall ->
+                if (rainfall.toDouble() > 25.0) {
+                    extremeEvents.add(
+                        mapOf(
+                            "date" to data.date,
+                            "type" to "HEAVY_RAINFALL",
+                            "value" to rainfall,
+                            "unit" to "mm",
+                            "severity" to when {
+                                rainfall.toDouble() > 50.0 -> "SEVERE"
+                                rainfall.toDouble() > 35.0 -> "MODERATE"
+                                else -> "MILD"
+                            },
+                            "farmId" to data.farm.id
+                        ) as Map<String, Any>
+                    )
+                }
+            }
+
+            // Strong wind events
+            data.windSpeedKmh?.let { windSpeed ->
+                if (windSpeed.toDouble() > 30.0) {
+                    extremeEvents.add(
+                        mapOf(
+                            "date" to data.date,
+                            "type" to "STRONG_WIND",
+                            "value" to windSpeed,
+                            "unit" to "km/h",
+                            "severity" to when {
+                                windSpeed.toDouble() > 50.0 -> "SEVERE"
+                                windSpeed.toDouble() > 40.0 -> "MODERATE"
+                                else -> "MILD"
+                            },
+                            "farmId" to data.farm.id
+                        ) as Map<String, Any>
+                    )
+                }
+            }
+        }
+
+        return extremeEvents.sortedByDescending { it["date"] as LocalDate }
+    }
+
+    private fun calculateMonthlyWeatherTrends(weatherData: List<WeatherData>): List<Map<String, Any>> {
+        if (weatherData.isEmpty()) return emptyList()
+
+        return weatherData
+            .groupBy { it.date.withDayOfMonth(1) } // Group by month
+            .map { (month, monthlyData) ->
+                val temperatures = monthlyData.mapNotNull { it.averageTemperature?.toDouble() }
+                val rainfall = monthlyData.mapNotNull { it.rainfallMm?.toDouble() }
+                val humidity = monthlyData.mapNotNull { it.humidityPercentage?.toDouble() }
+
+                mapOf(
+                    "month" to month,
+                    "recordCount" to monthlyData.size,
+                    "temperature" to if (temperatures.isNotEmpty()) {
+                        mapOf(
+                            "average" to BigDecimal(temperatures.average()).setScale(2, RoundingMode.HALF_UP),
+                            "minimum" to BigDecimal(temperatures.minOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP),
+                            "maximum" to BigDecimal(temperatures.maxOrNull() ?: 0.0).setScale(2, RoundingMode.HALF_UP)
+                        )
+                    } else null,
+                    "rainfall" to if (rainfall.isNotEmpty()) {
+                        mapOf(
+                            "total" to BigDecimal(rainfall.sum()).setScale(2, RoundingMode.HALF_UP),
+                            "average" to BigDecimal(rainfall.average()).setScale(2, RoundingMode.HALF_UP),
+                            "daysWithRain" to rainfall.count { it > 0 }
+                        )
+                    } else null,
+                    "humidity" to if (humidity.isNotEmpty()) {
+                        mapOf(
+                            "average" to BigDecimal(humidity.average()).setScale(2, RoundingMode.HALF_UP)
+                        )
+                    } else null
+                )
+            }
+            .sortedBy { it["month"] as LocalDate } as List<Map<String, Any>>
     }
 }

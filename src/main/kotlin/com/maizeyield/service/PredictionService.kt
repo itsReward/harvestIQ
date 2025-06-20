@@ -94,7 +94,7 @@ interface PredictionService {
     /**
      * Get all predictions with pagination
      */
-    fun getAllPredictions(userId: Long, pageable: Pageable, sessionId: Long?): Page<YieldPredictionResponse>
+    fun getAllPredictions(userId: Long, pageable: Pageable, sessionId: Long?): Iterable<YieldPredictionResponse>
 
     /**
      * Check if user is owner of prediction

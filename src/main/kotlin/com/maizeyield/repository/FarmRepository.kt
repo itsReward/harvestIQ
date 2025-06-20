@@ -11,4 +11,11 @@ interface FarmRepository : JpaRepository<Farm, Long> {
     fun findByUser(user: User): List<Farm>
     fun findByUserAndId(user: User, id: Long): Farm?
     fun countByUser(user: User): Long
+
+    /**
+     * Find all farms by user ID
+     * @param userId The ID of the user
+     * @return List of farms belonging to the user
+     */
+    fun findByUserId(userId: Long): List<Farm>
 }

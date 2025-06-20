@@ -63,10 +63,11 @@ class PlantingSessionController(
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Create a new planting session")
     fun createPlantingSession(
+        @PathVariable farmId: Long,
         @Valid @RequestBody request: PlantingSessionCreateRequest
     ): ResponseEntity<PlantingSessionResponse> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
-        val session = plantingSessionService.createPlantingSession(userId, request)
+        val session = plantingSessionService.createPlantingSession(userId, farmId, request)
         return ResponseEntity.status(HttpStatus.CREATED).body(session)
     }
 
