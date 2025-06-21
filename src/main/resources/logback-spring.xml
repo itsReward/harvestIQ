@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- src/main/resources/logback-spring.xml -->
+<configuration>
+    <!-- Console Appender with colored output -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>
+                %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %cyan(%logger{36}) - %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+    <!-- File Appender for API requests -->
+    <appender name="API_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/api-requests.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/api-requests.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- File Appender for errors -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/errors.log</file>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/errors.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>90</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Custom appender for performance metrics -->
+    <appender name="PERFORMANCE_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/performance.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/performance.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Development profile logging -->
+    <springProfile name="development,dev">
+        <!-- Root logger for development -->
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="API_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+
+        <!-- Enhanced logging for maize yield application -->
+        <logger name="com.maizeyield" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="API_FILE"/>
+        </logger>
+
+        <!-- SQL logging -->
+        <logger name="org.hibernate.SQL" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Spring Web logging for request/response -->
+        <logger name="org.springframework.web" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="API_FILE"/>
+        </logger>
+
+        <!-- HTTP client logging -->
+        <logger name="org.springframework.web.client" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="API_FILE"/>
+        </logger>
+
+        <!-- Transaction logging -->
+        <logger name="org.springframework.transaction" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- JPA Repository logging -->
+        <logger name="org.springframework.data" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+    </springProfile>
+
+    <!-- Production profile logging -->
+    <springProfile name="production,prod">
+        <root level="WARN">
+            <appender-ref ref="API_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+
+        <logger name="com.maizeyield" level="INFO" additivity="false">
+            <appender-ref ref="API_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </logger>
+
+        <!-- Performance logging in production -->
+        <logger name="performance" level="INFO" additivity="false">
+            <appender-ref ref="PERFORMANCE_FILE"/>
+        </logger>
+    </springProfile>
+
+    <!-- Test profile logging -->
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <logger name="com.maizeyield" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+    </springProfile>
+
+    <!-- Specific logger configurations -->
+
+    <!-- Farm-related logging -->
+    <logger name="com.maizeyield.controller.FarmController" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="API_FILE"/>
+    </logger>
+
+    <logger name="com.maizeyield.service.FarmService" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="API_FILE"/>
+    </logger>
+
+    <!-- Security logging -->
+    <logger name="org.springframework.security" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="API_FILE"/>
+    </logger>
+
+    <!-- External service logging -->
+    <logger name="com.maizeyield.service.external" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="API_FILE"/>
+    </logger>
+
+    <!-- Recommendation service logging -->
+    <logger name="com.maizeyield.service.impl.EnhancedRecommendationServiceImpl" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="API_FILE"/>
+    </logger>
+
+    <!-- Weather service logging -->
+    <logger name="com.maizeyield.service.external.WeatherApiService" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="API_FILE"/>
+    </logger>
+
+    <!-- Reduce noise from common libraries -->
+    <logger name="org.apache.http" level="WARN"/>
+    <logger name="org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping" level="WARN"/>
+    <logger name="org.hibernate.engine.internal.StatisticalLoggingSessionEventListener" level="WARN"/>
+    <logger name="org.springframework.boot.actuate.endpoint.web.EndpointLinksResolver" level="WARN"/>
+
+</configuration>

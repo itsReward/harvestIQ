@@ -17,11 +17,11 @@ import java.time.LocalDate
 class PlantingSessionServiceImpl(
     private val plantingSessionRepository: PlantingSessionRepository,
     private val farmRepository: FarmRepository,
+    private val userRepository: UserRepository,
     private val maizeVarietyRepository: MaizeVarietyRepository,
     private val yieldPredictionRepository: YieldPredictionRepository,
     private val recommendationRepository: RecommendationRepository,
-    /*private val pestsDiseaseRepository: Repository<*, *>,
-    private val farmActivityRepository: Repository<*, *>,*/
+    private val yieldHistoryRepository: YieldHistoryRepository,
     private val weatherDataRepository: WeatherDataRepository,
     private val farmService: FarmService
 ) : PlantingSessionService {
@@ -63,7 +63,8 @@ class PlantingSessionServiceImpl(
             .orElse(null)
 
         // Get recommendations
-        val recommendations = recommendationRepository.findByPlantingSession(session)
+        val recommendations = recommendationRepository.findByPlantingSessionOrderByRecommendationDateDesc(session)
+            .take(5) // Latest 5 recommendations
             .map { recommendation ->
                 RecommendationResponse(
                     id = recommendation.id!!,
@@ -74,28 +75,210 @@ class PlantingSessionServiceImpl(
                     priority = recommendation.priority,
                     recommendationDate = recommendation.recommendationDate,
                     isViewed = recommendation.isViewed,
-                    isImplemented = recommendation.isImplemented,
-                    confidence = recommendation.confidence,
+                    isImplemented = recommendation.isImplemented
                 )
             }
-
-        // Calculate days from planting and growth stage
-        val daysFromPlanting = LocalDate.now().toEpochDay().minus(session.plantingDate.toEpochDay()).toInt()
-        val growthStage = calculateGrowthStage(daysFromPlanting)
 
         return PlantingSessionDetailResponse(
             id = session.id!!,
             farmId = session.farm.id!!,
-            maizeVariety = MaizeVarietyResponse(
-                id = session.maizeVariety.id!!,
-                name = session.maizeVariety.name,
-                maturityDays = session.maizeVariety.maturityDays,
-                optimalTemperatureMin = session.maizeVariety.optimalTemperatureMin,
-                optimalTemperatureMax = session.maizeVariety.optimalTemperatureMax,
-                droughtResistance = session.maizeVariety.droughtResistance,
-                diseaseResistance = session.maizeVariety.diseaseResistance,
-                description = session.maizeVariety.description
-            ),
+            farmName = session.farm.name,
+            maizeVariety = mapToMaizeVarietyResponse(session.maizeVariety),
+            plantingDate = session.plantingDate,
+            expectedHarvestDate = session.expectedHarvestDate,
+            seedRateKgPerHectare = session.seedRateKgPerHectare,
+            rowSpacingCm = session.rowSpacingCm,
+            fertilizerType = session.fertilizerType,
+            fertilizerAmountKgPerHectare = session.fertilizerAmountKgPerHectare,
+            irrigationMethod = session.irrigationMethod,
+            notes = session.notes,
+            daysFromPlanting = ChronoUnit.DAYS.between(session.plantingDate, LocalDate.now()).toInt(),
+            growthStage = calculateGrowthStage(session),
+            predictions = latestPrediction?.let { listOf(it) } ?: emptyList(),
+            recommendations = recommendations,
+            pestsDiseases = emptyList(), // TODO: implement when PestsDiseaseResponse exists
+            farmActivities = emptyList(), // TODO: implement when FarmActivityResponse exists
+            weatherData = emptyList() // TODO: implement when WeatherDataResponse exists
+        )
+    }
+
+    override fun getAllPlantingSessions(
+        userId: Long,
+        pageable: Pageable,
+        search: String
+    ): Page<PlantingSessionResponse> {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
+
+        // Get all farms owned by the user
+        val userFarms = farmRepository.findByUser(user)
+
+        if (userFarms.isEmpty()) {
+            return PageImpl(emptyList(), pageable, 0)
+        }
+
+        val sessions = if (search.isBlank()) {
+            // Get all sessions for user's farms with pagination
+            plantingSessionRepository.findByFarmIn(userFarms, pageable)
+        } else {
+            // Search sessions by farm name or maize variety name
+            plantingSessionRepository.findByFarmInAndFarmNameContainingIgnoreCaseOrMaizeVarietyNameContainingIgnoreCase(
+                userFarms, search, search, pageable
+            )
+        }
+
+        val sessionResponses = sessions.content.map { session ->
+            mapToPlantingSessionResponse(session)
+        }
+
+        return PageImpl(sessionResponses, pageable, sessions.totalElements)
+    }
+
+    override fun isSessionOwner(userId: Long, sessionId: Long): Boolean {
+        val session = plantingSessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
+
+        return farmService.isFarmOwner(userId, session.farm.id!!)
+    }
+
+    override fun getPlantingSessionStatus(
+        userId: Long,
+        sessionId: Long
+    ): Map<String, Any> {
+        if (!isSessionOwner(userId, sessionId)) {
+            throw UnauthorizedAccessException("You don't have permission to access this planting session")
+        }
+
+        val session = plantingSessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
+
+        val daysFromPlanting = ChronoUnit.DAYS.between(session.plantingDate, LocalDate.now()).toInt()
+        val status = calculateSessionStatus(session)
+        val growthStage = calculateGrowthStage(session)
+
+        // Get yield history if harvested
+        val yieldHistory = yieldHistoryRepository.findByPlantingSession(session).firstOrNull()
+
+        // Get latest prediction
+        val latestPrediction = yieldPredictionRepository.findLatestByPlantingSession(session).orElse(null)
+
+        // Get pending recommendations count
+        val pendingRecommendations = recommendationRepository.countUnimplementedHighPriorityRecommendations(session)
+
+        return mapOf(
+            "sessionId" to sessionId,
+            "farmName" to session.farm.name,
+            "maizeVariety" to session.maizeVariety.name,
+            "status" to status,
+            "growthStage" to growthStage,
+            "daysFromPlanting" to daysFromPlanting,
+            "plantingDate" to session.plantingDate,
+            "expectedHarvestDate" to (session.expectedHarvestDate ?: "Not set"),
+            "actualHarvestDate" to (yieldHistory?.harvestDate ?: "Not harvested"),
+            "actualYield" to (yieldHistory?.yieldTonsPerHectare ?: "No data"),
+            "predictedYield" to (latestPrediction?.predictedYieldTonsPerHectare ?: "No prediction"),
+            "pendingRecommendations" to pendingRecommendations,
+            "lastUpdated" to LocalDateTime.now()
+        )
+    }
+
+    override fun updatePlantingSessionStatus(
+        userId: Long,
+        sessionId: Long,
+        status: String
+    ): Boolean {
+        if (!isSessionOwner(userId, sessionId)) {
+            throw UnauthorizedAccessException("You don't have permission to update this planting session")
+        }
+
+        val session = plantingSessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
+
+        // Validate status
+        val validStatuses = listOf("PLANTED", "GROWING", "HARVESTED", "FAILED")
+        if (!validStatuses.contains(status.uppercase())) {
+            throw IllegalArgumentException("Invalid status: $status. Valid statuses are: ${validStatuses.joinToString(", ")}")
+        }
+
+        // For now, we store status information in notes or handle it through business logic
+        // Since the entity doesn't have a status field, we use calculated status based on dates
+        // This method could be used to trigger status-specific actions like creating yield history
+
+        when (status.uppercase()) {
+            "HARVESTED" -> {
+                // Could trigger creation of yield history record
+                // or update expected harvest date to actual harvest date
+                if (session.expectedHarvestDate == null || session.expectedHarvestDate!!.isAfter(LocalDate.now())) {
+                    // Update expected harvest date to today if not set or in future
+                    val updatedSession = session.copy(expectedHarvestDate = LocalDate.now())
+                    plantingSessionRepository.save(updatedSession)
+                }
+            }
+            "FAILED" -> {
+                // Could add a note about failure
+                val failureNote = "${session.notes ?: ""}\n[${LocalDate.now()}] Session marked as failed."
+                val updatedSession = session.copy(notes = failureNote.trim())
+                plantingSessionRepository.save(updatedSession)
+            }
+        }
+
+        return true
+    }
+
+    override fun getActivePlantingSessions(userId: Long): List<PlantingSessionResponse> {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
+
+        val userFarms = farmRepository.findByUser(user)
+
+        return userFarms.flatMap { farm ->
+            plantingSessionRepository.findActiveSessionsByFarm(farm, LocalDate.now())
+        }.map { session ->
+            mapToPlantingSessionResponse(session)
+        }
+    }
+
+    override fun getPlantingSessionsByDateRange(
+        userId: Long,
+        startDate: LocalDate,
+        endDate: LocalDate
+    ): List<PlantingSessionResponse> {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
+
+        val userFarms = farmRepository.findByUser(user)
+
+        return userFarms.flatMap { farm ->
+            plantingSessionRepository.findByFarmAndPlantingDateBetween(farm, startDate, endDate)
+        }.map { session ->
+            mapToPlantingSessionResponse(session)
+        }
+    }
+
+    // Helper methods
+    private fun mapToPlantingSessionResponse(session: PlantingSession): PlantingSessionResponse {
+        val daysFromPlanting = ChronoUnit.DAYS.between(session.plantingDate, LocalDate.now()).toInt()
+        val growthStage = calculateGrowthStage(session)
+
+        // Get latest prediction if available
+        val latestPrediction = yieldPredictionRepository.findLatestByPlantingSession(session)
+            .map { prediction ->
+                YieldPredictionResponse(
+                    id = prediction.id!!,
+                    plantingSessionId = session.id!!,
+                    predictionDate = prediction.predictionDate,
+                    predictedYieldTonsPerHectare = prediction.predictedYieldTonsPerHectare,
+                    confidencePercentage = prediction.confidencePercentage,
+                    modelVersion = prediction.modelVersion,
+                    featuresUsed = prediction.featuresUsed.split(",")
+                )
+            }
+            .orElse(null)
+
+        return PlantingSessionResponse(
+            id = session.id!!,
+            farmId = session.farm.id!!,
+            maizeVariety = mapToMaizeVarietyResponse(session.maizeVariety),
             plantingDate = session.plantingDate,
             expectedHarvestDate = session.expectedHarvestDate,
             seedRateKgPerHectare = session.seedRateKgPerHectare,
@@ -106,15 +289,70 @@ class PlantingSessionServiceImpl(
             notes = session.notes,
             daysFromPlanting = daysFromPlanting,
             growthStage = growthStage,
-            predictions = if (latestPrediction != null) listOf(latestPrediction) else emptyList(),
-            recommendations = recommendations,
-            // These would be populated with actual data in a full implementation
-            pestsDiseases = emptyList(),
-            farmActivities = emptyList(),
-            weatherData = emptyList()
+            latestPrediction = latestPrediction
         )
     }
 
+    private fun mapToMaizeVarietyResponse(variety: com.maizeyield.model.MaizeVariety): MaizeVarietyResponse {
+        return MaizeVarietyResponse(
+            id = variety.id!!,
+            name = variety.name,
+            maturityDays = variety.maturityDays,
+            optimalTemperatureMin = variety.optimalTemperatureMin,
+            optimalTemperatureMax = variety.optimalTemperatureMax,
+            droughtResistance = variety.droughtResistance,
+            diseaseResistance = variety.diseaseResistance,
+            description = variety.description
+        )
+    }
+
+    private fun calculateSessionStatus(session: PlantingSession): String {
+        val today = LocalDate.now()
+        val plantingDate = session.plantingDate
+        val expectedHarvestDate = session.expectedHarvestDate
+
+        // Check if there's actual yield history (means harvested)
+        val hasYieldHistory = yieldHistoryRepository.findByPlantingSession(session).isNotEmpty()
+        if (hasYieldHistory) {
+            return "HARVESTED"
+        }
+
+        // Check if session failed (indicated by notes containing failure keywords)
+        val notes = session.notes?.lowercase() ?: ""
+        if (notes.contains("failed") || notes.contains("failure") || notes.contains("abandoned")) {
+            return "FAILED"
+        }
+
+        // Check if past expected harvest date without yield history
+        if (expectedHarvestDate != null && today.isAfter(expectedHarvestDate.plusWeeks(2))) {
+            return "FAILED" // Likely failed if 2 weeks past expected harvest with no yield recorded
+        }
+
+        // Check if growing (planted and before/at expected harvest)
+        val daysFromPlanting = ChronoUnit.DAYS.between(plantingDate, today).toInt()
+        if (daysFromPlanting > 7) { // More than a week from planting
+            return "GROWING"
+        }
+
+        // Recently planted
+        return "PLANTED"
+    }
+
+    private fun calculateGrowthStage(session: PlantingSession): String {
+        val daysFromPlanting = ChronoUnit.DAYS.between(session.plantingDate, LocalDate.now()).toInt()
+        val maturityDays = session.maizeVariety.maturityDays
+
+        return when {
+            daysFromPlanting <= 14 -> "GERMINATION"
+            daysFromPlanting <= 30 -> "VEGETATIVE_EARLY"
+            daysFromPlanting <= maturityDays * 0.4 -> "VEGETATIVE_LATE"
+            daysFromPlanting <= maturityDays * 0.6 -> "TASSELING"
+            daysFromPlanting <= maturityDays * 0.8 -> "GRAIN_FILLING"
+            daysFromPlanting <= maturityDays -> "MATURITY"
+            else -> "POST_HARVEST"
+        }
+    }
+    
     @Transactional
     override fun createPlantingSession(
         userId: Long,
@@ -245,18 +483,80 @@ class PlantingSessionServiceImpl(
         pageable: Pageable,
         search: String
     ): Page<PlantingSessionResponse> {
-        TODO("Not yet implemented")
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
+
+        // Get all farms owned by the user
+        val userFarms = farmRepository.findByUser(user)
+
+        if (userFarms.isEmpty()) {
+            return PageImpl(emptyList(), pageable, 0)
+        }
+
+        val sessions = if (search.isBlank()) {
+            // Get all sessions for user's farms with pagination
+            plantingSessionRepository.findByFarmIn(userFarms, pageable)
+        } else {
+            // Search sessions by farm name or maize variety name
+            plantingSessionRepository.findByFarmInAndFarmNameContainingIgnoreCaseOrMaizeVarietyNameContainingIgnoreCase(
+                userFarms, search, search, pageable
+            )
+        }
+
+        val sessionResponses = sessions.content.map { session ->
+            mapToPlantingSessionResponse(session)
+        }
+
+        return PageImpl(sessionResponses, pageable, sessions.totalElements)
     }
 
     override fun isSessionOwner(userId: Long, sessionId: Long): Boolean {
-        TODO("Not yet implemented")
+        val session = plantingSessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
+
+        return farmService.isFarmOwner(userId, session.farm.id!!)
     }
+
 
     override fun getPlantingSessionStatus(
         userId: Long,
         sessionId: Long
     ): Map<String, Any> {
-        TODO("Not yet implemented")
+        if (!isSessionOwner(userId, sessionId)) {
+            throw UnauthorizedAccessException("You don't have permission to access this planting session")
+        }
+
+        val session = plantingSessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
+
+        val daysFromPlanting = ChronoUnit.DAYS.between(session.plantingDate, LocalDate.now()).toInt()
+        val status = calculateSessionStatus(session)
+        val growthStage = calculateGrowthStage(session)
+
+        // Get yield history if harvested
+        val yieldHistory = yieldHistoryRepository.findByPlantingSession(session).firstOrNull()
+
+        // Get latest prediction
+        val latestPrediction = yieldPredictionRepository.findLatestByPlantingSession(session).orElse(null)
+
+        // Get pending recommendations count
+        val pendingRecommendations = recommendationRepository.countUnimplementedHighPriorityRecommendations(session)
+
+        return mapOf(
+            "sessionId" to sessionId,
+            "farmName" to session.farm.name,
+            "maizeVariety" to session.maizeVariety.name,
+            "status" to status,
+            "growthStage" to growthStage,
+            "daysFromPlanting" to daysFromPlanting,
+            "plantingDate" to session.plantingDate,
+            "expectedHarvestDate" to session.expectedHarvestDate,
+            "actualHarvestDate" to yieldHistory?.harvestDate,
+            "actualYield" to yieldHistory?.yieldTonsPerHectare,
+            "predictedYield" to latestPrediction?.predictedYieldTonsPerHectare,
+            "pendingRecommendations" to pendingRecommendations,
+            "lastUpdated" to LocalDateTime.now()
+        )
     }
 
     override fun updatePlantingSessionStatus(
@@ -264,11 +564,55 @@ class PlantingSessionServiceImpl(
         sessionId: Long,
         status: String
     ): Boolean {
-        TODO("Not yet implemented")
+        if (!isSessionOwner(userId, sessionId)) {
+            throw UnauthorizedAccessException("You don't have permission to update this planting session")
+        }
+
+        val session = plantingSessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Planting session not found with ID: $sessionId") }
+
+        // Validate status
+        val validStatuses = listOf("PLANTED", "GROWING", "HARVESTED", "FAILED")
+        if (!validStatuses.contains(status.uppercase())) {
+            throw IllegalArgumentException("Invalid status: $status. Valid statuses are: ${validStatuses.joinToString(", ")}")
+        }
+
+        // For now, we store status information in notes or handle it through business logic
+        // Since the entity doesn't have a status field, we use calculated status based on dates
+        // This method could be used to trigger status-specific actions like creating yield history
+
+        when (status.uppercase()) {
+            "HARVESTED" -> {
+                // Could trigger creation of yield history record
+                // or update expected harvest date to actual harvest date
+                if (session.expectedHarvestDate == null || session.expectedHarvestDate!!.isAfter(LocalDate.now())) {
+                    // Update expected harvest date to today if not set or in future
+                    val updatedSession = session.copy(expectedHarvestDate = LocalDate.now())
+                    plantingSessionRepository.save(updatedSession)
+                }
+            }
+            "FAILED" -> {
+                // Could add a note about failure
+                val failureNote = "${session.notes ?: ""}\n[${LocalDate.now()}] Session marked as failed."
+                val updatedSession = session.copy(notes = failureNote.trim())
+                plantingSessionRepository.save(updatedSession)
+            }
+        }
+
+        return true
     }
 
     override fun getActivePlantingSessions(userId: Long): List<PlantingSessionResponse> {
-        TODO("Not yet implemented")
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
+
+        val userFarms = farmRepository.findByUser(user)
+
+        return userFarms.flatMap { farm ->
+            plantingSessionRepository.findActiveSessionsByFarm(farm, LocalDate.now())
+        }.map { session ->
+            mapToPlantingSessionResponse(session)
+        }
     }
 
     override fun getPlantingSessionsByDateRange(
@@ -276,70 +620,15 @@ class PlantingSessionServiceImpl(
         startDate: LocalDate,
         endDate: LocalDate
     ): List<PlantingSessionResponse> {
-        TODO("Not yet implemented")
-    }
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
 
-    // Helper method to map PlantingSession entity to PlantingSessionResponse DTO
-    private fun mapToPlantingSessionResponse(session: PlantingSession): PlantingSessionResponse {
-        // Calculate days from planting
-        val daysFromPlanting = LocalDate.now().toEpochDay().minus(session.plantingDate.toEpochDay()).toInt()
+        val userFarms = farmRepository.findByUser(user)
 
-        // Get growth stage based on days from planting
-        val growthStage = calculateGrowthStage(daysFromPlanting)
-
-        // Get latest prediction if available
-        val latestPrediction = yieldPredictionRepository.findLatestByPlantingSession(session)
-            .map { prediction ->
-                YieldPredictionResponse(
-                    id = prediction.id!!,
-                    plantingSessionId = session.id!!,
-                    predictionDate = prediction.predictionDate,
-                    predictedYieldTonsPerHectare = prediction.predictedYieldTonsPerHectare,
-                    confidencePercentage = prediction.confidencePercentage,
-                    modelVersion = prediction.modelVersion,
-                    featuresUsed = prediction.featuresUsed.split(",")
-                )
-            }
-            .orElse(null)
-
-        return PlantingSessionResponse(
-            id = session.id!!,
-            farmId = session.farm.id!!,
-            maizeVariety = MaizeVarietyResponse(
-                id = session.maizeVariety.id!!,
-                name = session.maizeVariety.name,
-                maturityDays = session.maizeVariety.maturityDays,
-                optimalTemperatureMin = session.maizeVariety.optimalTemperatureMin,
-                optimalTemperatureMax = session.maizeVariety.optimalTemperatureMax,
-                droughtResistance = session.maizeVariety.droughtResistance,
-                diseaseResistance = session.maizeVariety.diseaseResistance,
-                description = session.maizeVariety.description
-            ),
-            plantingDate = session.plantingDate,
-            expectedHarvestDate = session.expectedHarvestDate,
-            seedRateKgPerHectare = session.seedRateKgPerHectare,
-            rowSpacingCm = session.rowSpacingCm,
-            fertilizerType = session.fertilizerType,
-            fertilizerAmountKgPerHectare = session.fertilizerAmountKgPerHectare,
-            irrigationMethod = session.irrigationMethod,
-            notes = session.notes,
-            daysFromPlanting = daysFromPlanting,
-            growthStage = growthStage,
-            latestPrediction = latestPrediction
-        )
-    }
-
-    // Helper method to calculate growth stage based on days from planting
-    private fun calculateGrowthStage(daysFromPlanting: Int): String {
-        return when {
-            daysFromPlanting < 0 -> "Not Planted"
-            daysFromPlanting < 15 -> "Germination & Emergence (VE)"
-            daysFromPlanting < 30 -> "Vegetative Growth (V1-V5)"
-            daysFromPlanting < 60 -> "Rapid Growth (V6-V12)"
-            daysFromPlanting < 80 -> "Tasseling & Silking (VT-R1)"
-            daysFromPlanting < 100 -> "Kernel Development (R2-R4)"
-            daysFromPlanting < 120 -> "Maturity (R5-R6)"
-            else -> "Ready for Harvest"
+        return userFarms.flatMap { farm ->
+            plantingSessionRepository.findByFarmAndPlantingDateBetween(farm, startDate, endDate)
+        }.map { session ->
+            mapToPlantingSessionResponse(session)
         }
     }
 }

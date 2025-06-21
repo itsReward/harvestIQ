@@ -6,6 +6,7 @@ import com.maizeyield.model.User
 import com.maizeyield.repository.UserRepository
 import com.maizeyield.service.UserService
 import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
@@ -94,18 +95,94 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
         pageable: Pageable,
         search: String
     ): Page<UserResponse> {
-        TODO("Not yet implemented")
+        val users = if (search.isBlank()) {
+            // Get all users with pagination
+            userRepository.findAll(pageable)
+        } else {
+            // Search users by username, email, first name, or last name
+            userRepository.findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
+                search, search, search, search, pageable
+            )
+        }
+
+        val userResponses = users.content.map { user ->
+            UserResponse(
+                id = user.id!!,
+                username = user.username,
+                email = user.email,
+                firstName = user.firstName,
+                lastName = user.lastName,
+                phoneNumber = user.phoneNumber,
+                createdAt = user.createdAt,
+                lastLogin = user.lastLogin
+            )
+        }
+
+        return PageImpl(userResponses, pageable, users.totalElements)
     }
 
     override fun getAllFarmers(
         pageable: Pageable,
         search: String
     ): Page<UserResponse> {
-        TODO("Not yet implemented")
+        val farmers = if (search.isBlank()) {
+            // Get all farmers with pagination
+            userRepository.findByRole("FARMER", pageable)
+        } else {
+            // Search farmers by username, email, first name, or last name
+            userRepository.findByRoleAndUsernameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCaseOrRoleAndFirstNameContainingIgnoreCaseOrRoleAndLastNameContainingIgnoreCase(
+                "FARMER", search,
+                "FARMER", search,
+                "FARMER", search,
+                "FARMER", search,
+                pageable
+            )
+        }
+
+        val farmerResponses = farmers.content.map { farmer ->
+            UserResponse(
+                id = farmer.id!!,
+                username = farmer.username,
+                email = farmer.email,
+                firstName = farmer.firstName,
+                lastName = farmer.lastName,
+                phoneNumber = farmer.phoneNumber,
+                createdAt = farmer.createdAt,
+                lastLogin = farmer.lastLogin
+            )
+        }
+
+        return PageImpl(farmerResponses, pageable, farmers.totalElements)
     }
 
+    @Transactional
     override fun updateUserRole(userId: Long, role: String): UserResponse {
-        TODO("Not yet implemented")
+        // Validate role
+        val validRoles = listOf("ADMIN", "FARMER", "USER")
+        if (!validRoles.contains(role.uppercase())) {
+            throw IllegalArgumentException("Invalid role: $role. Valid roles are: ${validRoles.joinToString(", ")}")
+        }
+
+        val user = userRepository.findById(userId)
+            .orElseThrow { IllegalArgumentException("User not found with id: $userId") }
+
+        val updatedUser = user.copy(
+            role = role.uppercase(),
+            updatedAt = LocalDateTime.now()
+        )
+
+        val savedUser = userRepository.save(updatedUser)
+
+        return UserResponse(
+            id = savedUser.id!!,
+            username = savedUser.username,
+            email = savedUser.email,
+            firstName = savedUser.firstName,
+            lastName = savedUser.lastName,
+            phoneNumber = savedUser.phoneNumber,
+            createdAt = savedUser.createdAt,
+            lastLogin = savedUser.lastLogin
+        )
     }
 
     // Dashboard statistics methods
@@ -114,9 +191,7 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
     }
 
     override fun getFarmerCount(): Long {
-        // If you have a specific role/type field in User entity, use that
-        // For now, returning total users as placeholder
-        return userRepository.count()
+        return userRepository.countByRole("FARMER")
     }
 
     override fun getUserGrowthPercentage(): Double {
@@ -124,7 +199,6 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
             val now = LocalDateTime.now()
             val thisMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0)
             val lastMonth = thisMonth.minusMonths(1)
-            val twoMonthsAgo = thisMonth.minusMonths(2)
 
             val thisMonthCount = userRepository.countByCreatedAtBetween(thisMonth, now)
             val lastMonthCount = userRepository.countByCreatedAtBetween(lastMonth, thisMonth)
@@ -141,20 +215,18 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
     }
 
     override fun getFarmerGrowthPercentage(): Double {
-        // If you have specific farmer identification logic, implement it here
-        // For now, using same logic as user growth
         return try {
             val now = LocalDateTime.now()
             val thisMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0)
             val lastMonth = thisMonth.minusMonths(1)
 
-            val thisMonthCount = userRepository.countByCreatedAtBetween(thisMonth, now)
-            val lastMonthCount = userRepository.countByCreatedAtBetween(lastMonth, thisMonth)
+            val thisMonthFarmerCount = userRepository.countByRoleAndCreatedAtBetween("FARMER", thisMonth, now)
+            val lastMonthFarmerCount = userRepository.countByRoleAndCreatedAtBetween("FARMER", lastMonth, thisMonth)
 
-            if (lastMonthCount == 0L) {
-                if (thisMonthCount > 0) 100.0 else 0.0
+            if (lastMonthFarmerCount == 0L) {
+                if (thisMonthFarmerCount > 0) 100.0 else 0.0
             } else {
-                ((thisMonthCount - lastMonthCount).toDouble() / lastMonthCount.toDouble()) * 100.0
+                ((thisMonthFarmerCount - lastMonthFarmerCount).toDouble() / lastMonthFarmerCount.toDouble()) * 100.0
             }
         } catch (e: Exception) {
             // Return default growth if calculation fails
