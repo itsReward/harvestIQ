@@ -100,4 +100,10 @@ interface WeatherService {
      * Get weather statistics (Admin only)
      */
     fun getWeatherStatistics(location: String?, startDate: LocalDate?, endDate: LocalDate?): Map<String, Any>
+
+    fun getCurrentWeatherByLocation(location: String): WeatherDataResponse
+    fun getCurrentWeatherForFarm(farmId: Long): WeatherDataResponse
+    fun getWeatherHistory(farmId: Long, startDate: LocalDate, endDate: LocalDate): List<WeatherDataResponse>
+    fun getWeatherHistoryForLocation(location: String, startDate: LocalDate, endDate: LocalDate): List<WeatherDataResponse>
+    fun fetchLatestWeatherData(farmId: Long)
 }

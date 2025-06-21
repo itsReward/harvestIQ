@@ -9,6 +9,7 @@ import com.maizeyield.service.WeatherService
 import com.maizeyield.service.external.WeatherAlert
 import com.maizeyield.service.impl.WeatherServiceImpl
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
@@ -27,6 +28,80 @@ class WeatherController(
     private val weatherServiceImpl: WeatherServiceImpl, // For additional methods
     private val authService: AuthService
 ) {
+
+    @GetMapping
+    @Operation(
+        summary = "Get current weather data by location",
+        description = "Retrieves current weather information for a specified location"
+    )
+    fun getCurrentWeather(
+        @Parameter(description = "Location name (e.g., 'Harare', 'Bulawayo')")
+        @RequestParam location: String
+    ): ResponseEntity<WeatherDataResponse> {
+        logger.info { "Getting current weather for location: $location" }
+
+        val weatherData = weatherService.getCurrentWeatherByLocation(location)
+        return ResponseEntity.ok(weatherData)
+    }
+
+    @GetMapping("/history")
+    @Operation(
+        summary = "Get weather history",
+        description = "Retrieves historical weather data for a farm within a date range"
+    )
+    fun getWeatherHistory(
+        @Parameter(description = "Farm ID (optional)")
+        @RequestParam(required = false) farmId: Long?,
+        @Parameter(description = "Start date (YYYY-MM-DD)")
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) startDate: LocalDate,
+        @Parameter(description = "End date (YYYY-MM-DD)")
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) endDate: LocalDate
+    ): ResponseEntity<List<WeatherDataResponse>> {
+        logger.info { "Getting weather history for farmId: $farmId, from: $startDate to: $endDate" }
+
+        val weatherHistory = if (farmId != null) {
+            weatherService.getWeatherHistory(farmId, startDate, endDate)
+        } else {
+            weatherService.getWeatherHistoryForLocation("Harare", startDate, endDate) // Default location
+        }
+
+        return ResponseEntity.ok(weatherHistory)
+    }
+
+    @GetMapping("/farms/{farmId}")
+    @Operation(
+        summary = "Get current weather for farm",
+        description = "Retrieves current weather data for a specific farm"
+    )
+    fun getWeatherForFarm(
+        @Parameter(description = "Farm ID")
+        @PathVariable farmId: Long
+    ): ResponseEntity<WeatherDataResponse> {
+        logger.info { "Getting current weather for farm: $farmId" }
+
+        val weatherData = weatherService.getCurrentWeatherForFarm(farmId)
+        return ResponseEntity.ok(weatherData)
+    }
+
+    @GetMapping("/farms/{farmId}/history")
+    @Operation(
+        summary = "Get weather history for farm",
+        description = "Retrieves historical weather data for a specific farm"
+    )
+    fun getWeatherHistoryForFarm(
+        @Parameter(description = "Farm ID")
+        @PathVariable farmId: Long,
+        @Parameter(description = "Number of days back (default: 7)")
+        @RequestParam(defaultValue = "7") days: Int
+    ): ResponseEntity<List<WeatherDataResponse>> {
+        logger.info { "Getting weather history for farm: $farmId, last $days days" }
+
+        val endDate = LocalDate.now()
+        val startDate = endDate.minusDays(days.toLong())
+
+        val weatherHistory = weatherService.getWeatherHistory(farmId, startDate, endDate)
+        return ResponseEntity.ok(weatherHistory)
+    }
 
     @GetMapping("/farms/{farmId}/weather")
     @PreAuthorize("isAuthenticated()")

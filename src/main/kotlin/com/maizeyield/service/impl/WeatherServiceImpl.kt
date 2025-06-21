@@ -980,6 +980,34 @@ class WeatherServiceImpl(
         }
     }
 
+    override fun getCurrentWeatherByLocation(location: String): WeatherDataResponse {
+        TODO("Not yet implemented")
+    }
+
+    override fun getCurrentWeatherForFarm(farmId: Long): WeatherDataResponse {
+        TODO("Not yet implemented")
+    }
+
+    override fun getWeatherHistory(
+        farmId: Long,
+        startDate: LocalDate,
+        endDate: LocalDate
+    ): List<WeatherDataResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getWeatherHistoryForLocation(
+        location: String,
+        startDate: LocalDate,
+        endDate: LocalDate
+    ): List<WeatherDataResponse> {
+        TODO("Not yet implemented")
+    }
+
+    override fun fetchLatestWeatherData(farmId: Long) {
+        TODO("Not yet implemented")
+    }
+
 // Helper methods
 
     private fun validateWeatherDataRequest(request: WeatherDataCreateRequest) {
