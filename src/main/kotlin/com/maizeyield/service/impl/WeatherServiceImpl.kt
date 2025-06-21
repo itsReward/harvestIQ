@@ -9,6 +9,7 @@ import com.maizeyield.exception.ExternalServiceException
 import com.maizeyield.exception.ResourceNotFoundException
 import com.maizeyield.exception.UnauthorizedAccessException
 import com.maizeyield.model.Farm
+import com.maizeyield.model.User
 import com.maizeyield.model.WeatherData
 import com.maizeyield.repository.FarmRepository
 import com.maizeyield.repository.WeatherDataRepository
@@ -30,6 +31,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import kotlin.math.pow
 
 private val logger = KotlinLogging.logger {}
@@ -557,22 +559,7 @@ class WeatherServiceImpl(
         )
     }
 
-    // Helper method to map WeatherData entity to WeatherDataResponse DTO
-    private fun mapToWeatherDataResponse(weatherData: WeatherData): WeatherDataResponse {
-        return WeatherDataResponse(
-            id = weatherData.id!!,
-            farmId = weatherData.farm.id!!,
-            date = weatherData.date,
-            minTemperature = weatherData.minTemperature,
-            maxTemperature = weatherData.maxTemperature,
-            averageTemperature = weatherData.averageTemperature,
-            rainfallMm = weatherData.rainfallMm,
-            humidityPercentage = weatherData.humidityPercentage,
-            windSpeedKmh = weatherData.windSpeedKmh,
-            solarRadiation = weatherData.solarRadiation,
-            source = weatherData.source
-        )
-    }
+
 
     override fun getLastUpdateTime(): LocalDateTime? {
         return try {
@@ -980,12 +967,98 @@ class WeatherServiceImpl(
         }
     }
 
+    // WeatherServiceImpl - Complete implementation of TODO methods
+
+    @Cacheable(value = ["weather-current"], key = "#location", unless = "#result == null")
     override fun getCurrentWeatherByLocation(location: String): WeatherDataResponse {
-        TODO("Not yet implemented")
+        try {
+            logger.info { "Fetching current weather for location: $location" }
+
+            // Create a temporary farm object for location-based queries
+            val tempFarm = createTemporaryFarmForLocation(location)
+
+            // Use the existing weather API service to fetch current weather
+            val weatherData = weatherApiService.fetchCurrentWeather(tempFarm)
+                ?: throw ExternalServiceException("No current weather data available for location: $location", "WeatherAPI")
+
+            logger.info { "Successfully fetched current weather for location: $location" }
+            return weatherData
+
+        } catch (e: ExternalServiceException) {
+            throw e
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching current weather for location: $location" }
+            throw ExternalServiceException("Failed to fetch current weather data for location: $location", "WeatherAPI")
+        }
     }
 
+    @Cacheable(value = ["weather-farm"], key = "#farmId + '_current'", unless = "#result == null")
     override fun getCurrentWeatherForFarm(farmId: Long): WeatherDataResponse {
-        TODO("Not yet implemented")
+        try {
+            logger.info { "Fetching current weather for farm ID: $farmId" }
+
+            val farm = farmRepository.findById(farmId)
+                .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+            // Check if farm has coordinates
+            if (farm.latitude == null || farm.longitude == null) {
+                // Fall back to location-based weather if no coordinates
+                logger.warn { "Farm ${farm.name} has no coordinates, using location-based weather" }
+                return getCurrentWeatherByLocation(farm.location)
+            }
+
+            // Use the resilient weather fetching method
+            val weatherData = fetchCurrentWeatherWithFallback(farm)
+                ?: throw ExternalServiceException("No current weather data available for farm: ${farm.name}", "WeatherAPI")
+
+            // Store the fetched weather data in the database for future reference
+            try {
+                val weatherEntity = WeatherData(
+                    farm = farm,
+                    date = LocalDate.now(),
+                    minTemperature = weatherData.minTemperature,
+                    maxTemperature = weatherData.maxTemperature,
+                    averageTemperature = weatherData.averageTemperature,
+                    rainfallMm = weatherData.rainfallMm,
+                    humidityPercentage = weatherData.humidityPercentage,
+                    windSpeedKmh = weatherData.windSpeedKmh,
+                    solarRadiation = weatherData.solarRadiation,
+                    source = weatherData.source ?: "API"
+                )
+
+                // Check if weather data for today already exists
+                val existingData = weatherDataRepository.findByFarmAndDate(farm, LocalDate.now())
+                if (existingData.isEmpty) {
+                    weatherDataRepository.save(weatherEntity)
+                    logger.info { "Stored new weather data for farm: ${farm.name}" }
+                } else {
+                    // Update existing data
+                    val updated = existingData.get().copy(
+                        minTemperature = weatherData.minTemperature ?: existingData.get().minTemperature,
+                        maxTemperature = weatherData.maxTemperature ?: existingData.get().maxTemperature,
+                        averageTemperature = weatherData.averageTemperature ?: existingData.get().averageTemperature,
+                        rainfallMm = weatherData.rainfallMm ?: existingData.get().rainfallMm,
+                        humidityPercentage = weatherData.humidityPercentage ?: existingData.get().humidityPercentage,
+                        windSpeedKmh = weatherData.windSpeedKmh ?: existingData.get().windSpeedKmh,
+                        solarRadiation = weatherData.solarRadiation ?: existingData.get().solarRadiation
+                    )
+                    weatherDataRepository.save(updated)
+                    logger.info { "Updated existing weather data for farm: ${farm.name}" }
+                }
+            } catch (e: Exception) {
+                logger.warn(e) { "Failed to store weather data for farm: ${farm.name}, but continuing with response" }
+            }
+
+            return weatherData
+
+        } catch (e: ResourceNotFoundException) {
+            throw e
+        } catch (e: ExternalServiceException) {
+            throw e
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching current weather for farm ID: $farmId" }
+            throw ExternalServiceException("Failed to fetch current weather data for farm", "WeatherAPI")
+        }
     }
 
     override fun getWeatherHistory(
@@ -993,7 +1066,85 @@ class WeatherServiceImpl(
         startDate: LocalDate,
         endDate: LocalDate
     ): List<WeatherDataResponse> {
-        TODO("Not yet implemented")
+        try {
+            logger.info { "Fetching weather history for farm ID: $farmId from $startDate to $endDate" }
+
+            val farm = farmRepository.findById(farmId)
+                .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+            // First, try to get data from local database
+            val localWeatherData = weatherDataRepository.findByFarmAndDateBetween(farm, startDate, endDate)
+                .map { weatherData -> mapToWeatherDataResponse(weatherData) }
+
+            // If we have sufficient local data (at least 80% of the requested period), return it
+            val requestedDays = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
+            val localDataDays = localWeatherData.size
+
+            if (localDataDays >= (requestedDays * 0.8)) {
+                logger.info { "Sufficient local weather data found (${localDataDays}/${requestedDays} days)" }
+                return localWeatherData.sortedBy { it.date }
+            }
+
+            logger.info { "Insufficient local data (${localDataDays}/${requestedDays} days), fetching from external API" }
+
+            // If insufficient local data, fetch from external API
+            val historicalData = mutableListOf<WeatherDataResponse>()
+
+            // Fetch historical data in chunks to avoid API limits
+            var currentDate = startDate
+            while (!currentDate.isAfter(endDate)) {
+                try {
+                    val historicalWeather = weatherApiService.fetchHistoricalWeather(farm, currentDate)
+                    if (historicalWeather != null) {
+                        historicalData.add(historicalWeather)
+
+                        // Store in database for future use
+                        try {
+                            val existingData = weatherDataRepository.findByFarmAndDate(farm, currentDate)
+                            if (existingData.isEmpty) {
+                                val weatherEntity = WeatherData(
+                                    farm = farm,
+                                    date = currentDate,
+                                    minTemperature = historicalWeather.minTemperature,
+                                    maxTemperature = historicalWeather.maxTemperature,
+                                    averageTemperature = historicalWeather.averageTemperature,
+                                    rainfallMm = historicalWeather.rainfallMm,
+                                    humidityPercentage = historicalWeather.humidityPercentage,
+                                    windSpeedKmh = historicalWeather.windSpeedKmh,
+                                    solarRadiation = historicalWeather.solarRadiation,
+                                    source = historicalWeather.source ?: "Historical API"
+                                )
+                                weatherDataRepository.save(weatherEntity)
+                            }
+                        } catch (e: Exception) {
+                            logger.warn(e) { "Failed to store historical weather data for $currentDate" }
+                        }
+                    }
+
+                    // Small delay to respect API rate limits
+                    Thread.sleep(100)
+
+                } catch (e: Exception) {
+                    logger.warn(e) { "Failed to fetch historical weather for $currentDate" }
+                }
+
+                currentDate = currentDate.plusDays(1)
+            }
+
+            // Combine historical data with any existing local data
+            val allData = (localWeatherData + historicalData)
+                .distinctBy { it.date }
+                .sortedBy { it.date }
+
+            logger.info { "Successfully fetched weather history: ${allData.size} records" }
+            return allData
+
+        } catch (e: ResourceNotFoundException) {
+            throw e
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching weather history for farm ID: $farmId" }
+            throw ExternalServiceException("Failed to fetch weather history", "WeatherAPI")
+        }
     }
 
     override fun getWeatherHistoryForLocation(
@@ -1001,11 +1152,172 @@ class WeatherServiceImpl(
         startDate: LocalDate,
         endDate: LocalDate
     ): List<WeatherDataResponse> {
-        TODO("Not yet implemented")
+        try {
+            logger.info { "Fetching weather history for location: $location from $startDate to $endDate" }
+
+            // Create a temporary farm object for location-based queries
+            val tempFarm = createTemporaryFarmForLocation(location)
+
+            val historicalData = mutableListOf<WeatherDataResponse>()
+
+            // Fetch historical data day by day
+            var currentDate = startDate
+            while (!currentDate.isAfter(endDate)) {
+                try {
+                    val historicalWeather = weatherApiService.fetchHistoricalWeather(tempFarm, currentDate)
+                    if (historicalWeather != null) {
+                        historicalData.add(historicalWeather)
+                    }
+
+                    // Small delay to respect API rate limits
+                    Thread.sleep(100)
+
+                } catch (e: Exception) {
+                    logger.warn(e) { "Failed to fetch historical weather for location $location on $currentDate" }
+                }
+
+                currentDate = currentDate.plusDays(1)
+            }
+
+            logger.info { "Successfully fetched weather history for location: ${historicalData.size} records" }
+            return historicalData.sortedBy { it.date }
+
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching weather history for location: $location" }
+            throw ExternalServiceException("Failed to fetch weather history for location", "WeatherAPI")
+        }
     }
 
+    @Retryable(
+        value = [Exception::class],
+        maxAttempts = 3,
+        backoff = Backoff(delay = 2000, multiplier = 1.5)
+    )
     override fun fetchLatestWeatherData(farmId: Long) {
-        TODO("Not yet implemented")
+        try {
+            logger.info { "Fetching latest weather data for farm ID: $farmId" }
+
+            val farm = farmRepository.findById(farmId)
+                .orElseThrow { ResourceNotFoundException("Farm not found with ID: $farmId") }
+
+            // Fetch current weather data
+            val currentWeather = fetchCurrentWeatherWithFallback(farm)
+
+            if (currentWeather != null) {
+                // Store or update today's weather data
+                val today = LocalDate.now()
+                val existingData = weatherDataRepository.findByFarmAndDate(farm, today)
+
+                if (existingData.isPresent) {
+                    // Update existing record
+                    val updated = existingData.get().copy(
+                        minTemperature = currentWeather.minTemperature ?: existingData.get().minTemperature,
+                        maxTemperature = currentWeather.maxTemperature ?: existingData.get().maxTemperature,
+                        averageTemperature = currentWeather.averageTemperature ?: existingData.get().averageTemperature,
+                        rainfallMm = currentWeather.rainfallMm ?: existingData.get().rainfallMm,
+                        humidityPercentage = currentWeather.humidityPercentage ?: existingData.get().humidityPercentage,
+                        windSpeedKmh = currentWeather.windSpeedKmh ?: existingData.get().windSpeedKmh,
+                        solarRadiation = currentWeather.solarRadiation ?: existingData.get().solarRadiation,
+                        source = currentWeather.source ?: existingData.get().source
+                    )
+                    weatherDataRepository.save(updated)
+                    logger.info { "Updated weather data for farm: ${farm.name}" }
+                } else {
+                    // Create new record
+                    val weatherEntity = WeatherData(
+                        farm = farm,
+                        date = today,
+                        minTemperature = currentWeather.minTemperature,
+                        maxTemperature = currentWeather.maxTemperature,
+                        averageTemperature = currentWeather.averageTemperature,
+                        rainfallMm = currentWeather.rainfallMm,
+                        humidityPercentage = currentWeather.humidityPercentage,
+                        windSpeedKmh = currentWeather.windSpeedKmh,
+                        solarRadiation = currentWeather.solarRadiation,
+                        source = currentWeather.source ?: "API"
+                    )
+                    weatherDataRepository.save(weatherEntity)
+                    logger.info { "Created new weather data record for farm: ${farm.name}" }
+                }
+
+                // Also try to fetch and backfill recent days if missing
+                val recentDays = 7
+                for (i in 1..recentDays) {
+                    val pastDate = today.minusDays(i.toLong())
+                    val pastData = weatherDataRepository.findByFarmAndDate(farm, pastDate)
+
+                    if (pastData.isEmpty) {
+                        try {
+                            val historicalWeather = weatherApiService.fetchHistoricalWeather(farm, pastDate)
+                            if (historicalWeather != null) {
+                                val historicalEntity = WeatherData(
+                                    farm = farm,
+                                    date = pastDate,
+                                    minTemperature = historicalWeather.minTemperature,
+                                    maxTemperature = historicalWeather.maxTemperature,
+                                    averageTemperature = historicalWeather.averageTemperature,
+                                    rainfallMm = historicalWeather.rainfallMm,
+                                    humidityPercentage = historicalWeather.humidityPercentage,
+                                    windSpeedKmh = historicalWeather.windSpeedKmh,
+                                    solarRadiation = historicalWeather.solarRadiation,
+                                    source = "Historical API"
+                                )
+                                weatherDataRepository.save(historicalEntity)
+                                logger.info { "Backfilled weather data for farm: ${farm.name} on $pastDate" }
+
+                                // Small delay between API calls
+                                Thread.sleep(200)
+                            }
+                        } catch (e: Exception) {
+                            logger.warn(e) { "Failed to backfill weather data for $pastDate" }
+                        }
+                    }
+                }
+            } else {
+                logger.warn { "No weather data available for farm: ${farm.name}" }
+            }
+
+        } catch (e: ResourceNotFoundException) {
+            throw e
+        } catch (e: Exception) {
+            logger.error(e) { "Error fetching latest weather data for farm ID: $farmId" }
+            throw ExternalServiceException("Failed to fetch latest weather data", "WeatherAPI")
+        }
+    }
+
+// Helper methods
+
+    private fun createTemporaryFarmForLocation(location: String): Farm {
+        // Create a temporary farm object for location-based weather queries
+        // This allows us to reuse existing weather API methods
+        return Farm(
+            user = User(
+                email = "temp@email.com",
+                passwordHash = "2FHKJHUOFDJIFUQORQ0314098FDJHJHJHJX83U0AFJK8",
+                username = "temporary"
+            ), // Empty user for temp farm
+            name = "Temp Farm for $location",
+            location = location,
+            sizeHectares = BigDecimal.ZERO,
+            latitude = null, // Will trigger location-based weather lookup
+            longitude = null
+        )
+    }
+
+    private fun mapToWeatherDataResponse(weatherData: WeatherData): WeatherDataResponse {
+        return WeatherDataResponse(
+            id = weatherData.id,
+            farmId = weatherData.farm.id!!,
+            date = weatherData.date,
+            minTemperature = weatherData.minTemperature,
+            maxTemperature = weatherData.maxTemperature,
+            averageTemperature = weatherData.averageTemperature,
+            rainfallMm = weatherData.rainfallMm,
+            humidityPercentage = weatherData.humidityPercentage,
+            windSpeedKmh = weatherData.windSpeedKmh,
+            solarRadiation = weatherData.solarRadiation,
+            source = weatherData.source
+        )
     }
 
 // Helper methods
