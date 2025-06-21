@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import mu.KotlinLogging
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -28,6 +29,8 @@ class WeatherController(
     private val weatherServiceImpl: WeatherServiceImpl, // For additional methods
     private val authService: AuthService
 ) {
+
+    val logger = KotlinLogging.logger {}
 
     @GetMapping
     @Operation(
@@ -68,7 +71,7 @@ class WeatherController(
         return ResponseEntity.ok(weatherHistory)
     }
 
-    @GetMapping("/farms/{farmId}")
+    @GetMapping("/farms/{farmId}/current-weather")
     @Operation(
         summary = "Get current weather for farm",
         description = "Retrieves current weather data for a specific farm"
