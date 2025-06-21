@@ -12,7 +12,7 @@ import java.time.LocalDateTime
 
 @Repository
 interface UserRepository : JpaRepository<User, Long> {
-    fun getAllUsers(): List<User>
+
 
     fun findByUsername(username: String): User?
 
@@ -21,6 +21,9 @@ interface UserRepository : JpaRepository<User, Long> {
     fun existsByUsername(username: String): Boolean
 
     fun existsByEmail(email: String): Boolean
+
+    @Query("SELECT u FROM User ORDER BY u.username")
+    fun getAllUsers(): List<User>
 
     // Dashboard query methods
     fun countByCreatedAtBetween(startDate: LocalDateTime, endDate: LocalDateTime): Long
