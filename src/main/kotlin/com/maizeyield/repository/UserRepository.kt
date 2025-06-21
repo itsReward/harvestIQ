@@ -22,7 +22,7 @@ interface UserRepository : JpaRepository<User, Long> {
 
     fun existsByEmail(email: String): Boolean
 
-    @Query("SELECT u FROM User ORDER BY u.username")
+    @Query("SELECT u FROM User u ORDER BY u.username")
     fun getAllUsers(): List<User>
 
     // Dashboard query methods
