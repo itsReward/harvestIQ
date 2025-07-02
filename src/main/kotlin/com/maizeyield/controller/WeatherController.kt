@@ -22,7 +22,7 @@ import java.math.BigDecimal
 import java.time.LocalDate
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/weather")
 @Tag(name = "Weather", description = "Weather data operations with external API integration")
 class WeatherController(
     private val weatherService: WeatherService,
@@ -32,7 +32,7 @@ class WeatherController(
 
     val logger = KotlinLogging.logger {}
 
-    @GetMapping
+    @GetMapping("/current")
     @Operation(
         summary = "Get current weather data by location",
         description = "Retrieves current weather information for a specified location"
@@ -128,7 +128,7 @@ class WeatherController(
         return ResponseEntity.ok(weatherDataList)
     }
 
-    @GetMapping("/weather/{weatherDataId}")
+    @GetMapping("/data/{weatherDataId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get weather data by ID")
     fun getWeatherDataById(@PathVariable weatherDataId: Long): ResponseEntity<WeatherDataResponse> {

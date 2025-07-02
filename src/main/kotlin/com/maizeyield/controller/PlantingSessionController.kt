@@ -59,7 +59,7 @@ class PlantingSessionController(
         return ResponseEntity.ok(session)
     }
 
-    @PostMapping
+    @PostMapping("/create/{farmId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Create a new planting session")
     fun createPlantingSession(

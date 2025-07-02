@@ -73,9 +73,42 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("*")
-        configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        configuration.allowedHeaders = listOf("Authorization", "Content-Type")
+
+        // ✅ FIX 1: Use specific origins instead of "*" when credentials are involved
+        configuration.allowedOriginPatterns = listOf(
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001"
+        )
+
+        // ✅ FIX 2: Explicitly allow credentials
+        configuration.allowCredentials = true
+
+        // ✅ FIX 3: Include all necessary methods including OPTIONS for preflight
+        configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
+
+        // ✅ FIX 4: Include all necessary headers
+        configuration.allowedHeaders = listOf(
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "Origin",
+            "X-Requested-With",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers"
+        )
+
+        // ✅ FIX 5: Expose necessary headers to the frontend
+        configuration.exposedHeaders = listOf(
+            "Authorization",
+            "Content-Type",
+            "X-Total-Count"
+        )
+
+        // ✅ FIX 6: Set preflight cache duration
+        configuration.maxAge = 3600L
+
         val source = UrlBasedCorsConfigurationSource()
         source.registerCorsConfiguration("/**", configuration)
         return source

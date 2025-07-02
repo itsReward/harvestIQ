@@ -8,6 +8,8 @@ import com.maizeyield.model.User
 import com.maizeyield.repository.*
 import com.maizeyield.service.FarmService
 import com.maizeyield.service.PlantingSessionService
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
+import kotlin.math.log
 
 @Service
 class PlantingSessionServiceImpl(
@@ -29,6 +32,8 @@ class PlantingSessionServiceImpl(
     private val weatherDataRepository: WeatherDataRepository,
     private val farmService: FarmService
 ) : PlantingSessionService {
+
+    val logger = LoggerFactory.getLogger(PlantingSessionServiceImpl::class.java)
 
     override fun getPlantingSessionsByFarmId(userId: Long, farmId: Long): List<PlantingSessionResponse> {
         if (!farmService.isFarmOwner(userId, farmId)) {
@@ -108,6 +113,10 @@ class PlantingSessionServiceImpl(
 
     @Transactional
     override fun createPlantingSession(userId: Long, farmId: Long, request: PlantingSessionCreateRequest): PlantingSessionResponse {
+        logger.info("Creating planting session for farm ID: $farmId")
+        logger.info("Planting session request: $request")
+        logger.info("User ID: $userId")
+
         if (!farmService.isFarmOwner(userId, farmId)) {
             throw UnauthorizedAccessException("You don't have permission to create planting sessions for this farm")
         }
@@ -135,6 +144,9 @@ class PlantingSessionServiceImpl(
         )
 
         val savedSession = plantingSessionRepository.save(session)
+
+        logger.info("Planting session created with ID: ${savedSession.id}")
+        logger.info("Planting session response: $savedSession")
         return mapToPlantingSessionResponse(savedSession)
     }
 
@@ -223,7 +235,6 @@ class PlantingSessionServiceImpl(
         return farmService.isFarmOwner(userId, session.farm.id!!)
     }
 
-    // NEW METHODS - These are the ones that were TODO
 
     override fun getAllPlantingSessions(
         userId: Long,
@@ -409,6 +420,7 @@ class PlantingSessionServiceImpl(
             rowSpacingCm = session.rowSpacingCm,
             fertilizerType = session.fertilizerType,
             fertilizerAmountKgPerHectare = session.fertilizerAmountKgPerHectare,
+            areaPlanted = session.areaPlanted,
             irrigationMethod = session.irrigationMethod,
             notes = session.notes,
             daysFromPlanting = daysFromPlanting,

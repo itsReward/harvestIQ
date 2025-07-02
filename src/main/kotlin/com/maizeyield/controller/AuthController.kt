@@ -12,6 +12,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -50,4 +51,21 @@ class AuthController(private val authService: AuthService) {
 
         return ResponseEntity.ok(mapOf("message" to "Password changed successfully"))
     }
+
+    @GetMapping("/validate")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Validate current authentication token")
+    fun validateToken(): ResponseEntity<Map<String, Any>> {
+        // If we reach here, the token is valid (Spring Security would have rejected invalid tokens)
+        val userId = authService.getUserIdFromToken(
+            SecurityContextUtil.getTokenFromRequest()
+        )
+
+        return ResponseEntity.ok(mapOf(
+            "valid" to true,
+            "userId" to userId,
+            "timestamp" to System.currentTimeMillis()
+        ))
+    }
+
 }

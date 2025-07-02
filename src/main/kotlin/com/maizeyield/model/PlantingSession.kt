@@ -40,6 +40,9 @@ data class PlantingSession(
     @Column(name = "fertilizer_amount_kg_per_hectare", precision = 6, scale = 2)
     var fertilizerAmountKgPerHectare: BigDecimal? = null,
 
+    @Column(name = "area_planted", precision = 6, scale = 2)
+    var areaPlanted: BigDecimal? = null,
+
     @Column(name = "irrigation_method", length = 50)
     var irrigationMethod: String? = null,
 

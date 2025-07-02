@@ -39,6 +39,7 @@ data class PlantingSessionResponse(
     val rowSpacingCm: Int? = null,
     val fertilizerType: String? = null,
     val fertilizerAmountKgPerHectare: BigDecimal? = null,
+    val areaPlanted: BigDecimal? = null,
     val irrigationMethod: String? = null,
     val notes: String? = null,
     val daysFromPlanting: Int? = null,
