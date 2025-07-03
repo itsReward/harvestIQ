@@ -33,7 +33,11 @@ data class FarmResponse(
     val latitude: BigDecimal? = null,
     val longitude: BigDecimal? = null,
     val elevation: BigDecimal? = null,
-    val createdAt: LocalDateTime
+    val createdAt: LocalDateTime,
+    val ownerId: Long? = null,
+    val ownerName: String? = null,
+    val ownerEmail: String? = null,
+    val ownerPhone: String? = null
 )
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -46,6 +50,11 @@ data class FarmDetailResponse(
     val longitude: BigDecimal? = null,
     val elevation: BigDecimal? = null,
     val createdAt: LocalDateTime,
+    // ADDED: Owner information and contact details
+    val ownerId: Long? = null,
+    val ownerName: String? = null,
+    val ownerEmail: String? = null,
+    val ownerPhone: String? = null,
     val soilData: SoilDataResponse? = null,
     val activePlantingSessions: List<PlantingSessionResponse> = emptyList()
 )

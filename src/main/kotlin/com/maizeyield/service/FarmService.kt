@@ -44,9 +44,14 @@ interface FarmService {
     fun getTotalFarmCount(): Long
 
     /**
-     * Get all farms with pagination and search
+     * Get all farms with pagination and search (for regular users - only their farms)
      */
     fun getAllFarms(userId: Long, pageable: Pageable, search: String): Page<FarmResponse>
+
+    /**
+     * Get ALL farms in the system (Admin only)
+     */
+    fun getAllFarmsForAdmin(pageable: Pageable, search: String): Page<FarmResponse>
 
     /**
      * Get farm statistics for a specific farm

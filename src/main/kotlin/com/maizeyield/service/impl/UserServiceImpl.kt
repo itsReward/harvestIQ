@@ -28,7 +28,8 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
             lastName = user.lastName,
             phoneNumber = user.phoneNumber,
             createdAt = user.createdAt,
-            lastLogin = user.lastLogin
+            lastLogin = user.lastLogin,
+            role = user.role
         )
     }
 
@@ -49,7 +50,8 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
             lastName = user.lastName,
             phoneNumber = user.phoneNumber,
             createdAt = user.createdAt,
-            lastLogin = user.lastLogin
+            lastLogin = user.lastLogin,
+            role = user.role
         )
     }
 
@@ -77,7 +79,8 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
             lastName = savedUser.lastName,
             phoneNumber = savedUser.phoneNumber,
             createdAt = savedUser.createdAt,
-            lastLogin = savedUser.lastLogin
+            lastLogin = savedUser.lastLogin,
+            role = savedUser.role
         )
     }
 
@@ -114,7 +117,8 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
                 lastName = user.lastName,
                 phoneNumber = user.phoneNumber,
                 createdAt = user.createdAt,
-                lastLogin = user.lastLogin
+                lastLogin = user.lastLogin,
+                role = user.role
             )
         }
 
@@ -148,7 +152,7 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
                 lastName = farmer.lastName,
                 phoneNumber = farmer.phoneNumber,
                 createdAt = farmer.createdAt,
-                lastLogin = farmer.lastLogin
+                lastLogin = farmer.lastLogin,
             )
         }
 
@@ -181,7 +185,8 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
             lastName = savedUser.lastName,
             phoneNumber = savedUser.phoneNumber,
             createdAt = savedUser.createdAt,
-            lastLogin = savedUser.lastLogin
+            lastLogin = savedUser.lastLogin,
+            role = savedUser.role
         )
     }
 

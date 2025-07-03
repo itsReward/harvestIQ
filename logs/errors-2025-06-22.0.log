@@ -1,0 +1,20 @@
+2025-06-22 02:23:05.278 [http-nio-8181-exec-10] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 1401ms - No current weather data available for location: Harare
+2025-06-22 02:23:05.278 [http-nio-8181-exec-10] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 1405ms - No current weather data available for location: Harare
+2025-06-22 10:31:26.129 [http-nio-8181-exec-10] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 593ms - No current weather data available for location: Harare
+2025-06-22 10:31:26.135 [http-nio-8181-exec-10] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 602ms - No current weather data available for location: Harare
+2025-06-22 10:31:39.231 [http-nio-8181-exec-1] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 273ms - No current weather data available for location: Harare
+2025-06-22 10:31:39.231 [http-nio-8181-exec-1] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 273ms - No current weather data available for location: Harare
+2025-06-22 14:02:36.840 [http-nio-8181-exec-2] ERROR performance - ❌ Service Error: AuthServiceImpl.loginUser failed after 85ms - Bad credentials
+2025-06-22 14:02:36.840 [http-nio-8181-exec-2] ERROR performance - ❌ Controller Error: AuthController.loginUser failed after 85ms - Bad credentials
+2025-06-22 14:02:46.852 [http-nio-8181-exec-9] ERROR performance - ❌ Service Error: AuthServiceImpl.loginUser failed after 85ms - Bad credentials
+2025-06-22 14:02:46.852 [http-nio-8181-exec-9] ERROR performance - ❌ Controller Error: AuthController.loginUser failed after 85ms - Bad credentials
+2025-06-22 14:03:07.155 [http-nio-8181-exec-7] ERROR performance - ❌ Service Error: AuthServiceImpl.loginUser failed after 84ms - Bad credentials
+2025-06-22 14:03:07.155 [http-nio-8181-exec-7] ERROR performance - ❌ Controller Error: AuthController.loginUser failed after 84ms - Bad credentials
+2025-06-22 14:54:58.403 [http-nio-8181-exec-5] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 1135ms - No current weather data available for location: Harare
+2025-06-22 14:54:58.408 [http-nio-8181-exec-5] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 1140ms - No current weather data available for location: Harare
+2025-06-22 14:54:58.811 [http-nio-8181-exec-8] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 389ms - No current weather data available for location: Harare
+2025-06-22 14:54:58.812 [http-nio-8181-exec-8] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 391ms - No current weather data available for location: Harare
+2025-06-22 14:57:04.561 [http-nio-8181-exec-10] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 460ms - No current weather data available for location: Harare
+2025-06-22 14:57:04.561 [http-nio-8181-exec-10] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 460ms - No current weather data available for location: Harare
+2025-06-22 14:57:14.578 [http-nio-8181-exec-7] ERROR performance - ❌ Service Error: WeatherServiceImpl.getCurrentWeatherByLocation failed after 10473ms - No current weather data available for location: Harare
+2025-06-22 14:57:14.578 [http-nio-8181-exec-7] ERROR performance - ❌ Controller Error: WeatherController.getCurrentWeather failed after 10473ms - No current weather data available for location: Harare

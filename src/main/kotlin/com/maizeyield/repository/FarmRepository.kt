@@ -19,23 +19,29 @@ interface FarmRepository : JpaRepository<Farm, Long> {
     fun countByUser(user: User): Long
     fun findByUserId(userId: Long): List<Farm>
 
-    // New methods for pagination and search
+    // Methods for user-specific pagination and search
     fun findByUser(user: User, pageable: Pageable): Page<Farm>
 
-    // Search methods for getAllFarms
+    // Search methods for user's farms
     fun findByUserAndNameContainingIgnoreCaseOrUserAndLocationContainingIgnoreCase(
         user1: User, name: String,
         user2: User, location: String,
         pageable: Pageable
     ): Page<Farm>
 
+    // NEW: Admin search methods for ALL farms in the system
+    fun findByNameContainingIgnoreCaseOrLocationContainingIgnoreCase(
+        name: String,
+        location: String,
+        pageable: Pageable
+    ): Page<Farm>
+
     // Region-based methods for getFarmsByRegion
     fun findByLocationContainingIgnoreCase(location: String): List<Farm>
 
-    // Time-based queries for statistics
+    // Existing statistical queries...
     fun findByCreatedAtBetween(startDate: LocalDateTime, endDate: LocalDateTime): List<Farm>
 
-    // Additional statistical queries
     @Query("SELECT COUNT(f) FROM Farm f WHERE f.createdAt >= :sinceDate")
     fun countFarmsCreatedSince(@Param("sinceDate") sinceDate: LocalDateTime): Long
 
@@ -51,7 +57,6 @@ interface FarmRepository : JpaRepository<Farm, Long> {
     @Query("SELECT f FROM Farm f ORDER BY f.sizeHectares ASC")
     fun findAllOrderBySizeAsc(): List<Farm>
 
-    // Recent farms for dashboard
     @Query("SELECT f FROM Farm f ORDER BY f.createdAt DESC LIMIT :limit")
     fun findRecentFarms(@Param("limit") limit: Int): List<Farm>
 }

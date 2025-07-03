@@ -42,7 +42,8 @@ class PlantingSessionController(
     }
 
     @GetMapping("/farms/{farmId}")
-    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    //@PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get all planting sessions for a farm")
     fun getPlantingSessionsByFarmId(@PathVariable farmId: Long): ResponseEntity<List<PlantingSessionResponse>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -51,7 +52,8 @@ class PlantingSessionController(
     }
 
     @GetMapping("/{sessionId}")
-    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    //@PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get planting session details by ID")
     fun getPlantingSessionById(@PathVariable sessionId: Long): ResponseEntity<PlantingSessionDetailResponse> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -72,7 +74,8 @@ class PlantingSessionController(
     }
 
     @PutMapping("/{sessionId}")
-    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    //@PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update planting session")
     fun updatePlantingSession(
         @PathVariable sessionId: Long,
@@ -84,7 +87,8 @@ class PlantingSessionController(
     }
 
     @DeleteMapping("/{sessionId}")
-    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    //@PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Delete planting session")
     fun deletePlantingSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, String>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -93,7 +97,8 @@ class PlantingSessionController(
     }
 
     @GetMapping("/{sessionId}/status")
-    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    //@PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get planting session status")
     fun getPlantingSessionStatus(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -102,7 +107,8 @@ class PlantingSessionController(
     }
 
     @PostMapping("/{sessionId}/status")
-    @PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    //@PreAuthorize("hasRole('ADMIN') or @plantingSessionService.isSessionOwner(authentication.principal.id, #sessionId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update planting session status")
     fun updatePlantingSessionStatus(
         @PathVariable sessionId: Long,

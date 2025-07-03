@@ -27,7 +27,7 @@ class UserController(
     @Operation(summary = "Get all users (Admin only)")
     fun getAllUsers(
         @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "10") size: Int,
+        @RequestParam(defaultValue = "50") size: Int,
         @RequestParam(defaultValue = "") search: String
     ): ResponseEntity<Page<UserResponse>> {
         val pageable: Pageable = PageRequest.of(page, size)

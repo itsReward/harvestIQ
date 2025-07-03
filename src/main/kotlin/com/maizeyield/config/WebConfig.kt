@@ -1,39 +1,59 @@
 package com.maizeyield.config
 
-import org.springframework.beans.factory.annotation.Autowired
+import jakarta.servlet.Filter
+import jakarta.servlet.FilterChain
+import jakarta.servlet.ServletRequest
+import jakarta.servlet.ServletResponse
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.web.servlet.config.annotation.CorsRegistry
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
+import org.springframework.web.util.ContentCachingRequestWrapper
+import org.springframework.web.util.ContentCachingResponseWrapper
+import org.springframework.boot.web.servlet.FilterRegistrationBean
+import org.springframework.core.Ordered
 
 @Configuration
-class WebConfig @Autowired constructor(
+class WebConfig(
     private val apiLoggingInterceptor: ApiLoggingInterceptor
 ) : WebMvcConfigurer {
 
     override fun addInterceptors(registry: InterceptorRegistry) {
         registry.addInterceptor(apiLoggingInterceptor)
-            .addPathPatterns("/api/**") // Only log API endpoints
+            .addPathPatterns("/api/**")
             .excludePathPatterns(
-                "/api/health",           // Exclude health checks to reduce noise
-                "/api/actuator/**",      // Exclude actuator endpoints
-                "/api-docs/**",          // Exclude API documentation
-                "/swagger-ui/**"         // Exclude Swagger UI
+                "/api/health",
+                "/api/actuator/**",
+                "/swagger-ui/**",
+                "/api-docs/**"
             )
     }
 
-    // ✅ Additional CORS configuration at MVC level for backup
-    override fun addCorsMappings(registry: CorsRegistry) {
-        registry.addMapping("/api/**")
-            .allowedOriginPatterns(
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001"
-            )
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
-            .allowedHeaders("*")
-            .allowCredentials(true)
-            .maxAge(3600)
+    @Bean
+    fun contentCachingFilter(): FilterRegistrationBean<ContentCachingFilter> {
+        val registrationBean = FilterRegistrationBean<ContentCachingFilter>()
+        registrationBean.filter = ContentCachingFilter()
+        registrationBean.addUrlPatterns("/api/*")
+        registrationBean.order = Ordered.HIGHEST_PRECEDENCE
+        return registrationBean
+    }
+}
+
+class ContentCachingFilter : Filter {
+    override fun doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
+        val httpRequest = request as HttpServletRequest
+        val httpResponse = response as HttpServletResponse
+
+        val wrappedRequest = ContentCachingRequestWrapper(httpRequest)
+        val wrappedResponse = ContentCachingResponseWrapper(httpResponse)
+
+        try {
+            chain.doFilter(wrappedRequest, wrappedResponse)
+        } finally {
+            // Important: Copy cached content back to the original response
+            wrappedResponse.copyBodyToResponse()
+        }
     }
 }

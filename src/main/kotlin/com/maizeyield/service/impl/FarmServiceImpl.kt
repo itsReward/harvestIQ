@@ -26,21 +26,32 @@ class FarmServiceImpl(
     private val weatherDataRepository: WeatherDataRepository
 ) : FarmService {
 
+
+    @Transactional(readOnly = true)
+    override fun getAllFarmsForAdmin(pageable: Pageable, search: String): Page<FarmResponse> {
+        val farms = if (search.isBlank()) {
+            // Get ALL farms in the system with pagination
+            farmRepository.findAll(pageable)
+        } else {
+            // Search ALL farms by name or location
+            farmRepository.findByNameContainingIgnoreCaseOrLocationContainingIgnoreCase(
+                search, search, pageable
+            )
+        }
+
+        val farmResponses = farms.content.map { farm ->
+            mapToFarmResponse(farm)
+        }
+
+        return PageImpl(farmResponses, pageable, farms.totalElements)
+    }
+
     override fun getFarmsByUserId(userId: Long): List<FarmResponse> {
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found with ID: $userId") }
 
         return farmRepository.findByUser(user).map { farm ->
-            FarmResponse(
-                id = farm.id!!,
-                name = farm.name,
-                location = farm.location,
-                sizeHectares = farm.sizeHectares,
-                latitude = farm.latitude,
-                longitude = farm.longitude,
-                elevation = farm.elevation,
-                createdAt = farm.createdAt
-            )
+            mapToFarmResponse(farm)
         }
     }
 
@@ -227,7 +238,8 @@ class FarmServiceImpl(
                 latitude = farm.latitude,
                 longitude = farm.longitude,
                 elevation = farm.elevation,
-                createdAt = farm.createdAt
+                createdAt = farm.createdAt,
+                ownerId = farm.user.id!!,
             )
         }
 
@@ -409,5 +421,34 @@ class FarmServiceImpl(
     private fun extractRegion(location: String): String {
         // Simple region extraction - you can make this more sophisticated
         return location.split(",").firstOrNull()?.trim() ?: "Unknown"
+    }
+
+    private fun mapToFarmResponse(farm: Farm): FarmResponse {
+        return FarmResponse(
+            id = farm.id!!,
+            name = farm.name,
+            location = farm.location,
+            sizeHectares = farm.sizeHectares,
+            latitude = farm.latitude,
+            longitude = farm.longitude,
+            elevation = farm.elevation,
+            createdAt = farm.createdAt,
+            // POPULATE OWNER AND CONTACT INFORMATION
+            ownerId = farm.user.id,
+            ownerName = buildString {
+                if (!farm.user.firstName.isNullOrBlank()) {
+                    append(farm.user.firstName)
+                }
+                if (!farm.user.lastName.isNullOrBlank()) {
+                    if (isNotEmpty()) append(" ")
+                    append(farm.user.lastName)
+                }
+                if (isEmpty()) {
+                    append(farm.user.username)
+                }
+            },
+            ownerEmail = farm.user.email,
+            ownerPhone = farm.user.phoneNumber
+        )
     }
 }

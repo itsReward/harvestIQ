@@ -4,6 +4,7 @@ import com.maizeyield.dto.FarmCreateRequest
 import com.maizeyield.dto.FarmDetailResponse
 import com.maizeyield.dto.FarmResponse
 import com.maizeyield.dto.FarmUpdateRequest
+import com.maizeyield.repository.UserRepository
 import com.maizeyield.service.AuthService
 import com.maizeyield.service.FarmService
 import io.swagger.v3.oas.annotations.Operation
@@ -22,23 +23,38 @@ import org.springframework.web.bind.annotation.*
 @Tag(name = "Farms", description = "Farm management operations")
 class FarmController(
     private val farmService: FarmService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val userRepository: UserRepository,
 ) {
+
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get all farms")
     fun getAllFarms(
         @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "10") size: Int,
+        @RequestParam(defaultValue = "50") size: Int,
         @RequestParam(defaultValue = "") search: String
     ): ResponseEntity<Page<FarmResponse>> {
         val pageable: Pageable = PageRequest.of(page, size)
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
-        val farms = farmService.getAllFarms(userId, pageable, search)
+
+        // Check if user is admin - if so, show ALL farms
+        val user = userRepository.findById(userId)
+            .orElseThrow { RuntimeException("User not found") }
+
+        val farms = if (user.role == "ADMIN") {
+            // Admin sees ALL farms in the system
+            farmService.getAllFarmsForAdmin(pageable, search)
+        } else {
+            // Regular users see only their own farms
+            farmService.getAllFarms(userId, pageable, search)
+        }
+
         return ResponseEntity.ok(farms)
     }
 
+    // Rest of your existing methods remain the same...
     @GetMapping("/my-farms")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get current user's farms")
@@ -48,8 +64,10 @@ class FarmController(
         return ResponseEntity.ok(farms)
     }
 
+
     @GetMapping("/{farmId}")
-    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    //@PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get farm details by ID")
     fun getFarmById(@PathVariable farmId: Long): ResponseEntity<FarmDetailResponse> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -67,7 +85,8 @@ class FarmController(
     }
 
     @PutMapping("/{farmId}")
-    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    //@PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update farm details")
     fun updateFarm(
         @PathVariable farmId: Long,
@@ -79,7 +98,8 @@ class FarmController(
     }
 
     @DeleteMapping("/{farmId}")
-    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    //@PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Delete a farm")
     fun deleteFarm(@PathVariable farmId: Long): ResponseEntity<Map<String, String>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -88,7 +108,8 @@ class FarmController(
     }
 
     @GetMapping("/{farmId}/statistics")
-    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    //@PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get farm statistics")
     fun getFarmStatistics(@PathVariable farmId: Long): ResponseEntity<Map<String, Any>> {
         val userId = authService.getUserIdFromToken(SecurityContextUtil.getTokenFromRequest())
@@ -105,7 +126,8 @@ class FarmController(
     }
 
     @PostMapping("/{farmId}/transfer")
-    @PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    //@PreAuthorize("hasRole('ADMIN') or @farmService.isFarmOwner(authentication.principal.id, #farmId)")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Transfer farm ownership")
     fun transferFarmOwnership(
         @PathVariable farmId: Long,

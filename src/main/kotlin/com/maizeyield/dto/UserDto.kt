@@ -41,7 +41,8 @@ data class UserResponse(
     val lastName: String? = null,
     val phoneNumber: String? = null,
     val createdAt: LocalDateTime,
-    val lastLogin: LocalDateTime? = null
+    val lastLogin: LocalDateTime? = null,
+    val role: String = "FARMER"
 )
 
 data class LoginResponse(
